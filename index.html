@@ -1,0 +1,2365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spotify Master</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:        #0a0a0f;
+    --surface:   #13131a;
+    --surface2:  #1a1a24;
+    --border:    #1e1e2e;
+    --green:     #1db954;
+    --green-dim: #14803a;
+    --text:      #e8e8f0;
+    --muted:     #6b6b80;
+    --warn:      #f59e0b;
+    --error:     #ef4444;
+    --radius:    12px;
+    --mono:      'Space Mono', monospace;
+    --sans:      'Space Grotesk', sans-serif;
+  }
+  body { background:var(--bg); color:var(--text); font-family:var(--sans); min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding:2.5rem 1rem 3rem; }
+
+  /* ── Outer layout: sidebar + centre ── */
+  .layout {
+    display:flex; gap:1.25rem; align-items:flex-start;
+    width:100%; max-width:1100px; justify-content:center;
+  }
+
+  /* ── File info sidebar ── */
+  .file-sidebar {
+    width:220px; flex-shrink:0;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:1.1rem;
+    display:none; flex-direction:column; gap:0.6rem;
+    position:sticky; top:2rem;
+  }
+  .file-sidebar.visible { display:flex; }
+  .file-sidebar h3 {
+    font-family:var(--mono); font-size:0.65rem; text-transform:uppercase;
+    letter-spacing:0.12em; color:var(--muted); margin-bottom:0.2rem;
+    padding-bottom:0.4rem; border-bottom:1px solid var(--border);
+  }
+  .fi-row { display:flex; flex-direction:column; gap:0.05rem; }
+  .fi-label { font-family:var(--mono); font-size:0.6rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; }
+  .fi-value { font-family:var(--mono); font-size:0.72rem; color:var(--text); word-break:break-word; }
+  .fi-value.green { color:var(--green); }
+  .fi-value.warn  { color:var(--warn); }
+  .fi-divider { height:1px; background:var(--border); margin:0.2rem 0; }
+  .fi-waveform {
+    width:100%; height:48px; background:var(--surface2);
+    border-radius:4px; border:1px solid var(--border); overflow:hidden;
+  }
+  .fi-waveform canvas { display:block; width:100%; height:100%; }
+
+  /* Advanced toggle button */
+  .btn-advanced {
+    display: flex; align-items: center; gap: 0.4rem;
+    background: none; border: 1px solid var(--border);
+    color: var(--muted); font-family: var(--mono);
+    font-size: 0.68rem; letter-spacing: 0.06em;
+    padding: 0.35rem 0.7rem; border-radius: 5px;
+    cursor: pointer; transition: color 0.15s, border-color 0.15s;
+    align-self: flex-start; margin-top: 0.2rem;
+  }
+  .btn-advanced:hover { color: var(--text); border-color: var(--muted); }
+  .btn-advanced.open  { color: var(--green); border-color: var(--green); }
+  #advancedChevron { transition: transform 0.2s; }
+  .btn-advanced.open #advancedChevron { transform: rotate(180deg); }
+
+  /* Apply analysis button on Master tab */
+  .btn-apply-analysis {
+    display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+    width: 100%; padding: 0.55rem 1rem;
+    background: rgba(29,185,84,0.1); border: 1px solid rgba(29,185,84,0.35);
+    color: var(--green); font-family: var(--mono); font-size: 0.75rem;
+    letter-spacing: 0.05em; border-radius: 7px;
+    cursor: pointer; transition: background 0.15s, border-color 0.15s;
+  }
+  .btn-apply-analysis:hover { background: rgba(29,185,84,0.18); border-color: var(--green); }
+
+  /* ── Console sidebar (right) ── */
+  .console-sidebar {
+    width: 220px; flex-shrink: 0;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.1rem;
+    display: none; flex-direction: column; gap: 0.5rem;
+    position: sticky; top: 2rem; max-height: 80vh;
+  }
+  .console-sidebar.visible { display: flex; }
+  .console-sidebar h3 {
+    font-family: var(--mono); font-size: 0.65rem; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--muted);
+    padding-bottom: 0.4rem; border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .console-body {
+    overflow-y: auto; flex: 1; max-height: calc(80vh - 3rem);
+    display: flex; flex-direction: column; gap: 0.15rem;
+  }
+  .console-body::-webkit-scrollbar { width: 4px; }
+  .console-body::-webkit-scrollbar-track { background: transparent; }
+  .console-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .cl-item {
+    display: grid; grid-template-columns: 14px 1fr;
+    gap: 0.35rem; align-items: start; padding: 0.3rem 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 0.72rem; line-height: 1.4;
+  }
+  .cl-item:last-child { border-bottom: none; }
+  .cl-icon { font-size: 0.7rem; margin-top: 0.05rem; }
+  .cl-icon.pending  { color: var(--muted); }
+  .cl-icon.active   { color: var(--warn); }
+  .cl-icon.done     { color: var(--green); }
+  .cl-icon.error    { color: var(--error); }
+  .cl-body { display: flex; flex-direction: column; gap: 0.1rem; }
+  .cl-label { font-family: var(--sans); font-size: 0.75rem; font-weight: 500; color: var(--text); }
+  .cl-label.muted   { color: var(--muted); font-weight: 400; }
+  .cl-detail { font-family: var(--mono); font-size: 0.62rem; color: var(--muted); line-height: 1.45; }
+  .cl-detail.green  { color: var(--green); }
+  .cl-summary {
+    font-family: var(--mono); font-size: 0.65rem; color: var(--green);
+    padding: 0.4rem 0.5rem; background: rgba(29,185,84,0.08);
+    border: 1px solid rgba(29,185,84,0.2); border-radius: 5px;
+    margin-top: 0.3rem; line-height: 1.5;
+  }
+
+  .header { text-align:center; margin-bottom:2rem; }
+  .header-eyebrow { font-family:var(--mono); font-size:0.7rem; letter-spacing:0.2em; color:var(--green); text-transform:uppercase; margin-bottom:0.5rem; }
+  h1 { font-size:clamp(1.8rem,5vw,2.6rem); font-weight:600; letter-spacing:-0.03em; line-height:1.1; }
+  h1 span { color:var(--green); }
+  .header-sub { margin-top:0.5rem; color:var(--muted); font-size:0.88rem; font-weight:300; }
+
+  .tabs { display:flex; width:100%; max-width:560px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius) var(--radius) 0 0; overflow:hidden; }
+  .tab-btn { flex:1; padding:0.85rem 0.5rem; background:none; border:none; color:var(--muted); font-family:var(--sans); font-size:0.85rem; font-weight:500; cursor:pointer; transition:color 0.15s,background 0.15s; border-bottom:2px solid transparent; }
+  .tab-btn:hover { color:var(--text); }
+  .tab-btn.active { color:var(--green); border-bottom-color:var(--green); background:rgba(29,185,84,0.04); }
+
+  .card { background:var(--surface); border:1px solid var(--border); border-top:none; border-radius:0 0 var(--radius) var(--radius); padding:1.75rem; width:100%; max-width:560px; display:flex; flex-direction:column; gap:1.1rem; }
+  .panel { display:none; flex-direction:column; gap:1.1rem; }
+  .panel.active { display:flex; }
+
+  input.file-input { position:fixed; left:-9999px; top:-9999px; opacity:0; }
+
+  .drop-zone { border:1.5px dashed var(--border); border-radius:8px; padding:1.5rem 1rem; text-align:center; cursor:pointer; transition:border-color 0.15s,background 0.15s; user-select:none; }
+  .drop-zone:hover,.drop-zone.drag-over { border-color:var(--green); background:rgba(29,185,84,0.04); }
+  .drop-zone.has-file { border-style:solid; border-color:var(--green-dim); background:rgba(29,185,84,0.05); padding:0.9rem 1rem; }
+  .drop-icon  { font-size:1.4rem; margin-bottom:0.25rem; display:block; line-height:1; }
+  .drop-label { font-size:0.88rem; font-weight:500; }
+  .drop-hint  { font-size:0.72rem; color:var(--muted); margin-top:0.15rem; font-family:var(--mono); }
+  .file-name  { font-family:var(--mono); font-size:0.72rem; color:var(--green); margin-top:0.25rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .drop-row { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; }
+  .drop-group label.drop-label-text { display:block; font-size:0.72rem; font-family:var(--mono); color:var(--muted); margin-bottom:0.35rem; text-transform:uppercase; letter-spacing:0.07em; }
+
+  /* ── Waveform ── */
+  .waveform-block { display:none; flex-direction:column; gap:4px; }
+  .waveform-block.visible { display:flex; }
+
+  /* Zoom toolbar */
+  .wf-toolbar {
+    display:flex; align-items:center; gap:6px;
+    font-family:var(--mono); font-size:0.68rem; color:var(--muted);
+  }
+  .wf-zoom-btn {
+    background:var(--surface2); border:1px solid var(--border); color:var(--text);
+    border-radius:4px; width:22px; height:22px; cursor:pointer; font-size:0.85rem;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+    transition:border-color 0.12s;
+  }
+  .wf-zoom-btn:hover { border-color:var(--green); }
+  .wf-zoom-label { min-width:36px; text-align:center; }
+  .wf-zoom-reset { margin-left:auto; background:none; border:none; color:var(--muted); font-family:var(--mono); font-size:0.65rem; cursor:pointer; padding:2px 6px; border-radius:3px; }
+  .wf-zoom-reset:hover { color:var(--text); }
+
+  /* Main waveform canvas area */
+  .waveform-wrap {
+    position:relative; width:100%; height:80px;
+    background:var(--surface2); border-radius:6px;
+    border:1px solid var(--border); overflow:hidden; cursor:crosshair;
+  }
+  .waveform-wrap canvas { display:block; width:100%; height:100%; }
+  .wf-selection { position:absolute; top:0; bottom:0; background:rgba(29,185,84,0.15); pointer-events:none; border-left:2px solid var(--green); border-right:2px solid var(--green); }
+  .wf-handle { position:absolute; top:0; bottom:0; width:18px; cursor:ew-resize; z-index:3; display:flex; align-items:center; justify-content:center; }
+  .wf-handle::after { content:''; display:block; width:3px; height:32px; background:var(--green); border-radius:2px; box-shadow:0 0 6px rgba(29,185,84,0.6); }
+  .wf-handle.left  { transform:translateX(-50%); }
+  .wf-handle.right { transform:translateX(50%); }
+
+  /* Minimap */
+  .wf-minimap {
+    position:relative; width:100%; height:24px;
+    background:var(--surface2); border-radius:4px;
+    border:1px solid var(--border); overflow:hidden; cursor:pointer;
+  }
+  .wf-minimap canvas { display:block; width:100%; height:100%; }
+  /* Viewport indicator on minimap */
+  .wf-mini-viewport {
+    position:absolute; top:0; bottom:0;
+    background:rgba(29,185,84,0.12); border-left:1px solid rgba(29,185,84,0.5); border-right:1px solid rgba(29,185,84,0.5);
+    pointer-events:none;
+  }
+  /* Selection tint on minimap */
+  .wf-mini-selection {
+    position:absolute; top:0; bottom:0;
+    background:rgba(29,185,84,0.25); pointer-events:none;
+  }
+
+  /* Time bar inside main waveform */
+  .wf-time-bar { position:absolute; bottom:0; left:0; right:0; height:16px; pointer-events:none; }
+  .wf-time-label { position:absolute; bottom:2px; font-family:var(--mono); font-size:0.6rem; color:var(--muted); transform:translateX(-50%); }
+
+  .wf-readout { display:none; justify-content:space-between; font-family:var(--mono); font-size:0.7rem; color:var(--muted); padding:0 2px; }
+  .wf-readout.visible { display:flex; }
+  .wf-readout span { }
+  .wf-readout span span { color:var(--green); }
+
+  /* Inputs */
+  .time-row { display:grid; grid-template-columns:1fr 1fr; gap:0.6rem; }
+  .field label { display:block; font-size:0.7rem; font-family:var(--mono); color:var(--muted); margin-bottom:0.3rem; text-transform:uppercase; letter-spacing:0.07em; }
+  .field input[type="number"] { width:100%; background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:0.5rem 0.6rem; font-family:var(--mono); font-size:0.85rem; outline:none; transition:border-color 0.15s; }
+  .field input[type="number"]:focus { border-color:var(--green); }
+
+  .xfade-row { display:flex; flex-direction:column; gap:0.3rem; }
+  .xfade-row label { font-size:0.7rem; font-family:var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:0.07em; display:flex; justify-content:space-between; }
+  .xfade-row label span { color:var(--text); }
+  input[type="range"] { -webkit-appearance:none; appearance:none; height:3px; background:var(--border); border-radius:99px; outline:none; cursor:pointer; width:100%; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; background:var(--green); border-radius:50%; }
+
+  .spec-row { display:flex; gap:0.35rem; flex-wrap:wrap; }
+  .pill { font-family:var(--mono); font-size:0.62rem; letter-spacing:0.05em; padding:0.18rem 0.5rem; border-radius:99px; background:rgba(29,185,84,0.1); color:var(--green); border:1px solid rgba(29,185,84,0.2); }
+
+  .btn { display:flex; align-items:center; justify-content:center; gap:0.5rem; border:none; border-radius:8px; font-family:var(--sans); font-size:0.92rem; font-weight:600; cursor:pointer; padding:0.8rem 1.5rem; transition:opacity 0.15s,transform 0.1s,background 0.15s; width:100%; letter-spacing:-0.01em; }
+  .btn:active { transform:scale(0.98); }
+  .btn:disabled { opacity:0.35; cursor:not-allowed; transform:none; }
+  .btn-primary { background:var(--green); color:#000; }
+  .btn-primary:hover:not(:disabled) { background:#22d160; }
+  .btn-download { background:transparent; color:var(--green); border:1.5px solid var(--green); }
+  .btn-download:hover:not(:disabled) { background:rgba(29,185,84,0.08); }
+  .btn-use {
+    background:transparent; color:var(--muted); border:1.5px solid var(--border);
+    font-size:0.8rem; padding:0.55rem 1rem; flex:0 0 auto; width:auto;
+  }
+  .btn-use:hover:not(:disabled) { color:var(--text); border-color:var(--green); }
+  .download-row { display:flex; gap:0.5rem; align-items:stretch; }
+  .btn-reset { background:transparent; color:var(--muted); border:1.5px solid var(--border); font-size:0.8rem; padding:0.55rem 1rem; }
+  .btn-reset:hover:not(:disabled) { color:var(--text); border-color:var(--muted); }
+
+  .status-bar { display:none; flex-direction:column; gap:0.45rem; }
+  .status-bar.visible { display:flex; }
+  .progress-track { height:3px; background:var(--border); border-radius:99px; overflow:hidden; }
+  .progress-fill { height:100%; background:var(--green); border-radius:99px; width:0%; transition:width 0.4s ease; }
+  .progress-fill.indeterminate { width:40%; animation:slide 1.2s ease-in-out infinite; }
+  @keyframes slide { 0%{margin-left:-40%} 100%{margin-left:100%} }
+  .status-text { font-family:var(--mono); font-size:0.7rem; color:var(--muted); }
+  .status-text.success { color:var(--green); }
+  .status-text.error   { color:var(--error); }
+
+  .server-notice { background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:8px; padding:0.7rem 0.9rem; font-size:0.75rem; color:var(--warn); line-height:1.55; display:none; }
+  .server-notice.visible { display:block; }
+  .server-notice code { font-family:var(--mono); background:rgba(245,158,11,0.15); padding:0.1em 0.3em; border-radius:3px; }
+
+  /* ── Report card ── */
+  .report { display:flex; flex-direction:column; gap:0.75rem; }
+  .report-section {
+    background:var(--surface2); border:1px solid var(--border);
+    border-radius:8px; padding:0.75rem 1rem;
+  }
+  .report-section h3 {
+    font-family:var(--mono); font-size:0.68rem; text-transform:uppercase;
+    letter-spacing:0.1em; color:var(--muted); margin-bottom:0.5rem;
+  }
+  .report-row {
+    display:flex; justify-content:space-between; align-items:baseline;
+    font-size:0.8rem; padding:0.15rem 0; border-bottom:1px solid var(--border);
+  }
+  .report-row:last-child { border-bottom:none; }
+  .report-row .label { color:var(--muted); font-family:var(--mono); font-size:0.72rem; }
+  .report-row .value { color:var(--text); font-family:var(--mono); font-size:0.78rem; }
+  .report-row .value.good    { color:var(--green); }
+  .report-row .value.warn    { color:var(--warn); }
+  .report-row .value.bad     { color:var(--error); }
+  .rec-item {
+    padding:0.5rem 0; border-bottom:1px solid var(--border);
+    display:grid; grid-template-columns:auto 1fr; gap:0 0.75rem;
+  }
+  .rec-item:last-child { border-bottom:none; }
+  .rec-cat {
+    font-family:var(--mono); font-size:0.65rem; color:var(--green);
+    background:rgba(29,185,84,0.1); border:1px solid rgba(29,185,84,0.2);
+    border-radius:4px; padding:0.1rem 0.4rem; white-space:nowrap;
+    align-self:start; margin-top:0.05rem;
+  }
+  .rec-body { display:flex; flex-direction:column; gap:0.15rem; }
+  .rec-setting { font-family:var(--mono); font-size:0.72rem; color:var(--text); font-weight:600; }
+  .rec-msg { font-size:0.75rem; color:var(--muted); line-height:1.45; }
+  .engine-badge {
+    display:inline-block; font-family:var(--mono); font-size:0.7rem;
+    padding:0.2rem 0.6rem; border-radius:99px; font-weight:600;
+  }
+  .engine-suno  { background:rgba(29,185,84,0.15); color:var(--green); border:1px solid rgba(29,185,84,0.3); }
+  .engine-other { background:rgba(107,107,128,0.15); color:var(--muted); border:1px solid var(--border); }
+
+  .preset-row { display:flex; gap:0.4rem; align-items:center; }
+  .preset-btn {
+    background:var(--surface2); border:1px solid var(--border);
+    color:var(--muted); border-radius:5px; padding:0.2rem 0.6rem;
+    font-family:var(--mono); font-size:0.68rem; cursor:pointer;
+    transition:border-color 0.12s, color 0.12s, background 0.12s;
+    white-space:nowrap;
+  }
+  .preset-btn:hover { border-color:var(--green); color:var(--text); }
+  .preset-btn.active { border-color:var(--green); color:var(--green); background:rgba(29,185,84,0.08); }
+
+  footer { margin-top:1.5rem; font-size:0.68rem; color:var(--muted); font-family:var(--mono); text-align:center; }
+</style>
+</head>
+<body>
+
+<input class="file-input" type="file" id="masterFile"    accept=".wav" />
+<input class="file-input" type="file" id="splMasterFile" accept=".wav" />
+<input class="file-input" type="file" id="splReplFile"   accept=".wav" />
+<input class="file-input" type="file" id="healFile"      accept=".wav" />
+<input class="file-input" type="file" id="bridgeFile"    accept=".wav" />
+<input class="file-input" type="file" id="dejinxFile"    accept=".wav" />
+<input class="file-input" type="file" id="refTargetFile"  accept=".wav" />
+<input class="file-input" type="file" id="refRefFile"     accept=".wav" />
+<input class="file-input" type="file" id="analyseFile"    accept=".wav" />
+
+<header class="header">
+  <p class="header-eyebrow">Mastering tool</p>
+  <h1>Ready for <span>Spotify</span></h1>
+  <p class="header-sub">−14 LUFS · −1 dBTP · 44.1 kHz · 16-bit</p>
+</header>
+
+<div class="layout">
+
+<!-- ── File info sidebar ── -->
+<aside class="file-sidebar" id="fileSidebar">
+  <h3>Loaded file</h3>
+  <div class="fi-waveform"><canvas id="sidebarWaveCanvas"></canvas></div>
+  <div class="fi-row"><span class="fi-label">Name</span><span class="fi-value green" id="fi-name">—</span></div>
+  <div class="fi-divider"></div>
+  <div class="fi-row"><span class="fi-label">Duration</span><span class="fi-value" id="fi-duration">—</span></div>
+  <div class="fi-row"><span class="fi-label">Sample rate</span><span class="fi-value" id="fi-sr">—</span></div>
+  <div class="fi-row"><span class="fi-label">Channels</span><span class="fi-value" id="fi-ch">—</span></div>
+  <div class="fi-row"><span class="fi-label">Bit depth</span><span class="fi-value" id="fi-bd">—</span></div>
+  <div class="fi-row"><span class="fi-label">File size</span><span class="fi-value" id="fi-size">—</span></div>
+  <div class="fi-divider"></div>
+  <div class="fi-row"><span class="fi-label">Est. LUFS</span><span class="fi-value" id="fi-lufs">—</span></div>
+  <div class="fi-row"><span class="fi-label">Peak</span><span class="fi-value" id="fi-peak">—</span></div>
+  <div class="fi-row"><span class="fi-label">Dynamic range</span><span class="fi-value" id="fi-dr">—</span></div>
+  <div class="fi-divider" id="fi-meta-divider" style="display:none"></div>
+  <div id="fi-meta"></div>
+</aside>
+
+<!-- ── Centre column ── -->
+<div class="centre">
+
+<div class="tabs">
+  <button class="tab-btn active" id="tabAnalyse"  onclick="switchTab('analyse')">🔬 Analyse</button>
+  <button class="tab-btn"        id="tabMaster"   onclick="switchTab('master')">🎛 Master</button>
+  <button class="tab-btn"        id="tabSplice"   onclick="switchTab('splice')">✂️ Splice</button>
+  <button class="tab-btn"        id="tabHeal"     onclick="switchTab('heal')">🩹 Heal</button>
+  <button class="tab-btn"        id="tabBridge"   onclick="switchTab('bridge')">📈 Bridge</button>
+  <button class="tab-btn"        id="tabDejinx"   onclick="switchTab('dejinx')">⚡ De-Jinx</button>
+  <button class="tab-btn"        id="tabRefmatch" onclick="switchTab('refmatch')">🎯 Ref match</button>
+</div>
+
+<div class="card">
+  <div class="server-notice" id="serverNotice">
+    ⚠ Server not running. In your terminal:<br>
+    <code>pip install flask flask-cors pyloudnorm soundfile scipy numpy</code><br>
+    <code>python server.py</code><br>
+    The browser will open automatically at http://localhost:5051
+  </div>
+
+  <!-- ══════════ ANALYSE ══════════ -->
+  <div class="panel active" id="panelAnalyse">
+    <p style="font-size:0.8rem; color:var(--muted); line-height:1.55;">
+      Drop any WAV — the analyser will measure it and recommend the right settings before you master.
+    </p>
+    <div class="drop-zone" id="analyseDrop">
+      <span class="drop-icon">🔬</span>
+      <p class="drop-label">Drop your WAV here to analyse</p>
+      <p class="drop-hint">or click to browse</p>
+      <p class="file-name" id="analyseFileName"></p>
+    </div>
+    <button class="btn btn-primary" id="analyseBtn" disabled>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Analyse track
+    </button>
+    <div class="status-bar" id="analyseStatus">
+      <div class="progress-track"><div class="progress-fill" id="analyseProgress"></div></div>
+      <p class="status-text" id="analyseStatusText"></p>
+    </div>
+    <div class="report" id="analyseReport" style="display:none"></div>
+  </div>
+
+  <!-- ══════════ MASTER ══════════ -->
+  <div class="panel" id="panelMaster">    <div class="spec-row">
+      <span class="pill">−14 LUFS</span><span class="pill">−1 dBTP</span>
+      <span class="pill">EQ comp</span><span class="pill">M/S processing</span>
+      <span class="pill">saturation</span><span class="pill">multiband</span>
+      <span class="pill">transient shape</span><span class="pill">44.1 kHz / 16-bit</span>
+    </div>
+    <div class="xfade-row">
+      <label>
+        Stereo presence width <span id="widthVal">+1.9 dB</span>
+        <span style="font-size:0.6rem;color:var(--muted);font-weight:300;margin-left:4px">0 dB = bass anchor only</span>
+      </label>
+      <div class="preset-row">
+        <button class="preset-btn" id="presetOther" onclick="setWidthPreset(0)">Other AI</button>
+        <button class="preset-btn active" id="presetSuno" onclick="setWidthPreset(0.25)">Suno</button>
+        <button class="preset-btn" id="presetWide" onclick="setWidthPreset(0.5)">Wide</button>
+        <input type="range" id="widthSlider" min="0" max="0.6" step="0.025" value="0.25" style="flex:1" />
+      </div>
+    </div>
+    <button class="btn-advanced" id="advancedToggle" onclick="toggleAdvanced()">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" id="advancedChevron"><polyline points="6,9 12,15 18,9"/></svg>
+      Advanced settings
+    </button>
+    <div id="advancedPanel" style="display:none;flex-direction:column;gap:0.6rem;padding:0.75rem 0.6rem;background:var(--surface2);border:1px solid var(--border);border-radius:7px;margin-top:0.1rem">
+      <div class="xfade-row">
+        <label>De-esser sensitivity <span id="deessVal">Off</span></label>
+        <input type="range" id="deessSlider" min="-2" max="7" step="1" value="-2" />
+      </div>
+      <div class="xfade-row">
+        <label>Vocal ride (second half lift) <span id="vocalVal">Off</span></label>
+        <input type="range" id="vocalSlider" min="0" max="8" step="0.5" value="0" />
+      </div>
+      <div class="xfade-row">
+        <label>
+          Macro dynamics <span id="macroVal">3.5 dB</span>
+          <span style="font-size:0.6rem;color:var(--muted);font-weight:300;margin-left:4px">0 = Off — preserve natural dynamics</span>
+        </label>
+        <input type="range" id="macroSlider" min="0" max="6" step="0.5" value="3.5" />
+      </div>
+    </div>
+    <button class="btn-apply-analysis" id="applyAnalysisBtn" style="display:none" onclick="applyRecommendations()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>
+      Apply analysis settings
+    </button>
+    <button class="btn-advanced" id="expertToggle" onclick="toggleExpert()">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" id="expertChevron"><polyline points="6,9 12,15 18,9"/></svg>
+      Expert — chain internals
+    </button>
+    <div id="expertPanel" style="display:none;flex-direction:column;gap:0.5rem;padding:0.75rem 0.6rem;background:rgba(255,80,80,0.04);border:1px solid rgba(255,80,80,0.2);border-radius:7px;margin-top:0.1rem">
+      <p style="font-family:var(--mono);font-size:0.63rem;color:#ff6060;margin:0 0 0.3rem">⚠ Changing these affects the core processing chain. Defaults are calibrated for Suno output.</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem 1rem">
+
+        <div class="xfade-row">
+          <label>EQ air shelf <span id="eqShelfVal">+1.5 dB</span></label>
+          <input type="range" id="eqShelfSlider" min="0" max="4" step="0.5" value="1.5" oninput="updateExpertLabel('eqShelfVal',this.value,'+','dB'); resetMasterIfDone()" />
+        </div>
+
+        <div class="xfade-row">
+          <label>EQ mud cut <span id="eqMudVal">−2.0 dB</span></label>
+          <input type="range" id="eqMudSlider" min="-6" max="0" step="0.5" value="-2" oninput="updateExpertLabel('eqMudVal',this.value,'','dB'); resetMasterIfDone()" />
+        </div>
+
+        <div class="xfade-row">
+          <label>Air restore blend <span id="airBlendVal">0.018</span></label>
+          <input type="range" id="airBlendSlider" min="0" max="0.06" step="0.002" value="0.018" oninput="document.getElementById('airBlendVal').textContent=parseFloat(this.value).toFixed(3); resetMasterIfDone()" />
+        </div>
+
+        <div class="xfade-row">
+          <label>Dehaze depth <span id="dehazeVal">±4%</span></label>
+          <input type="range" id="dehazeSlider" min="0" max="0.10" step="0.01" value="0.04" oninput="document.getElementById('dehazeVal').textContent='±'+Math.round(this.value*100)+'%'; resetMasterIfDone()" />
+        </div>
+
+        <div class="xfade-row">
+          <label>Saturation drive <span id="satDriveVal">+6 dB</span></label>
+          <input type="range" id="satDriveSlider" min="0" max="12" step="1" value="6" oninput="updateExpertLabel('satDriveVal',this.value,'+','dB'); resetMasterIfDone()" />
+        </div>
+
+        <div class="xfade-row">
+          <label>Saturation mix <span id="satMixVal">15%</span></label>
+          <input type="range" id="satMixSlider" min="0" max="0.5" step="0.05" value="0.15" oninput="document.getElementById('satMixVal').textContent=Math.round(this.value*100)+'%'; resetMasterIfDone()" />
+        </div>
+
+        <div class="xfade-row">
+          <label>Comp threshold <span id="compThreshVal">−18 dBRMS</span></label>
+          <input type="range" id="compThreshSlider" min="-30" max="-6" step="1" value="-18" oninput="updateExpertLabel('compThreshVal',this.value,'','dBRMS'); resetMasterIfDone()" />
+        </div>
+
+        <div class="xfade-row">
+          <label>Comp ratio <span id="compRatioVal">2.0 : 1</span></label>
+          <input type="range" id="compRatioSlider" min="1" max="6" step="0.5" value="2" oninput="document.getElementById('compRatioVal').textContent=parseFloat(this.value).toFixed(1)+' : 1'; resetMasterIfDone()" />
+        </div>
+
+        <div class="xfade-row">
+          <label>Transient boost <span id="transientVal">+2.5 dB</span></label>
+          <input type="range" id="transientSlider" min="0" max="6" step="0.5" value="2.5" oninput="updateExpertLabel('transientVal',this.value,'+','dB'); resetMasterIfDone()" />
+        </div>
+
+        <div class="xfade-row">
+          <label>Dyn EQ max cut <span id="dyneqVal">3 dB</span></label>
+          <input type="range" id="dyneqSlider" min="0" max="8" step="0.5" value="3" oninput="updateExpertLabel('dyneqVal',this.value,'','dB'); resetMasterIfDone()" />
+        </div>
+
+      </div>
+
+      <button style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);background:none;border:1px solid var(--border);border-radius:5px;padding:0.25rem 0.6rem;cursor:pointer;align-self:flex-start;margin-top:0.2rem" onclick="resetExpertDefaults()">Reset to defaults</button>
+    </div>
+
+    <div class="drop-zone" id="masterDrop">
+      <span class="drop-icon">🎵</span>
+      <p class="drop-label">Drop your WAV here</p>
+      <p class="drop-hint">or click to browse</p>
+      <p class="file-name" id="masterFileName"></p>
+    </div>
+    <button class="btn btn-primary" id="masterBtn" disabled>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5,3 19,12 5,21"/></svg>
+      Master for Spotify
+    </button>
+    <div class="status-bar" id="masterStatus">
+      <div class="progress-track"><div class="progress-fill" id="masterProgress"></div></div>
+      <p class="status-text" id="masterStatusText"></p>
+    </div>
+    <div class="download-row" id="masterDownloadRow" style="display:none">
+    <button class="btn btn-download" id="masterDownload" style="display:flex;width:100%">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download mastered WAV
+    </button>
+    <button class="btn btn-use" id="masterUse" onclick="useInTool('masterDownload')" title="Load this file into all tabs"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg> Use in tool</button>
+    </div>
+    <button class="btn btn-reset" id="masterReset" style="display:none">Start over</button>
+  </div>
+
+  <!-- ══════════ SPLICE ══════════ -->
+  <div class="panel" id="panelSplice">
+    <div class="spec-row">
+      <span class="pill">zero-crossing snap</span>
+      <span class="pill">loudness match</span>
+      <span class="pill">equal-power xfade</span>
+    </div>
+    <div class="drop-row">
+      <div class="drop-group">
+        <label class="drop-label-text">Master track</label>
+        <div class="drop-zone" id="splMasterDrop">
+          <span class="drop-icon">🎵</span>
+          <p class="drop-label" style="font-size:0.8rem">Drop master WAV</p>
+          <p class="drop-hint">or click</p>
+          <p class="file-name" id="splMasterName"></p>
+        </div>
+      </div>
+      <div class="drop-group">
+        <label class="drop-label-text">Replacement clip</label>
+        <div class="drop-zone" id="splReplDrop">
+          <span class="drop-icon">🎤</span>
+          <p class="drop-label" style="font-size:0.8rem">Drop replacement</p>
+          <p class="drop-hint">or click</p>
+          <p class="file-name" id="splReplName"></p>
+        </div>
+      </div>
+    </div>
+    <!-- Waveform block: toolbar + main view + minimap + readout -->
+    <div class="waveform-block" id="splWaveBlock">
+      <div class="wf-toolbar">
+        <button class="wf-zoom-btn" id="splZoomOut" title="Zoom out">−</button>
+        <button class="wf-zoom-btn" id="splZoomIn"  title="Zoom in">+</button>
+        <span class="wf-zoom-label" id="splZoomLabel">1×</span>
+        <span style="color:var(--border)">·</span>
+        <span>scroll to zoom · drag to pan</span>
+        <button class="wf-zoom-reset" id="splZoomReset">Reset view</button>
+      </div>
+      <div class="waveform-wrap" id="splWaveWrap">
+        <canvas id="splWaveCanvas"></canvas>
+        <div class="wf-selection" id="splSelection"></div>
+        <div class="wf-handle left"  id="splHandleIn"></div>
+        <div class="wf-handle right" id="splHandleOut"></div>
+        <div class="wf-time-bar" id="splTimebar"></div>
+      </div>
+      <div class="wf-minimap" id="splMinimap">
+        <canvas id="splMinimapCanvas"></canvas>
+        <div class="wf-mini-selection" id="splMiniSelection"></div>
+        <div class="wf-mini-viewport"  id="splMiniViewport"></div>
+      </div>
+      <div class="wf-readout visible" id="splReadout">
+        <span>In: <span id="splReadIn">—</span></span>
+        <span>Out: <span id="splReadOut">—</span></span>
+        <span>Duration: <span id="splReadDur">—</span></span>
+      </div>
+    </div>
+    <div class="time-row">
+      <div class="field"><label>In (seconds)</label><input type="number" id="splIn"  min="0" step="0.1" placeholder="e.g. 32.5" /></div>
+      <div class="field"><label>Out (seconds)</label><input type="number" id="splOut" min="0" step="0.1" placeholder="e.g. 48.0" /></div>
+    </div>
+    <div class="xfade-row">
+      <label>Crossfade length <span id="xfadeVal">80 ms</span></label>
+      <input type="range" id="xfadeSlider" min="5" max="500" step="5" value="80" />
+    </div>
+    <button class="btn btn-primary" id="spliceBtn" disabled>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      Splice section
+    </button>
+    <div class="status-bar" id="spliceStatus">
+      <div class="progress-track"><div class="progress-fill" id="spliceProgress"></div></div>
+      <p class="status-text" id="spliceStatusText"></p>
+    </div>
+    <div class="download-row" id="spliceDownloadRow" style="display:none">
+    <button class="btn btn-download" id="spliceDownload" style="display:flex;width:100%">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download spliced WAV
+    </button>
+    <button class="btn btn-use" id="spliceUse" onclick="useInTool('spliceDownload')" title="Load this file into all tabs"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg> Use in tool</button>
+    </div>
+    <button class="btn btn-reset" id="spliceReset" style="display:none">Start over</button>
+  </div>
+
+  <!-- ══════════ HEAL ══════════ -->
+  <div class="panel" id="panelHeal">
+    <div class="spec-row">
+      <span class="pill">zero-crossing snap</span><span class="pill">level match</span>
+      <span class="pill">gain ramp</span><span class="pill">spectral blend</span>
+    </div>
+    <p style="font-size:0.8rem; color:var(--muted); line-height:1.55;">
+      For tracks where the replacement is already baked in. Mark where the replaced section starts and ends — the tool smooths both seams.
+    </p>
+    <div class="drop-zone" id="healDrop">
+      <span class="drop-icon">🎵</span>
+      <p class="drop-label">Drop your WAV here</p>
+      <p class="drop-hint">or click to browse</p>
+      <p class="file-name" id="healFileName"></p>
+    </div>
+    <div class="waveform-block" id="healWaveBlock">
+      <div class="wf-toolbar">
+        <button class="wf-zoom-btn" id="healZoomOut" title="Zoom out">−</button>
+        <button class="wf-zoom-btn" id="healZoomIn"  title="Zoom in">+</button>
+        <span class="wf-zoom-label" id="healZoomLabel">1×</span>
+        <span style="color:var(--border)">·</span>
+        <span>scroll to zoom · drag to pan</span>
+        <button class="wf-zoom-reset" id="healZoomReset">Reset view</button>
+      </div>
+      <div class="waveform-wrap" id="healWaveWrap">
+        <canvas id="healWaveCanvas"></canvas>
+        <div class="wf-selection" id="healSelection"></div>
+        <div class="wf-handle left"  id="healHandleIn"></div>
+        <div class="wf-handle right" id="healHandleOut"></div>
+        <div class="wf-time-bar" id="healTimebar"></div>
+      </div>
+      <div class="wf-minimap" id="healMinimap">
+        <canvas id="healMinimapCanvas"></canvas>
+        <div class="wf-mini-selection" id="healMiniSelection"></div>
+        <div class="wf-mini-viewport"  id="healMiniViewport"></div>
+      </div>
+      <div class="wf-readout visible" id="healReadout">
+        <span>In: <span id="healReadIn">—</span></span>
+        <span>Out: <span id="healReadOut">—</span></span>
+        <span>Duration: <span id="healReadDur">—</span></span>
+      </div>
+    </div>
+    <div class="time-row">
+      <div class="field"><label>Section in (s)</label><input type="number" id="healIn"  min="0" step="0.1" placeholder="e.g. 32.5" /></div>
+      <div class="field"><label>Section out (s)</label><input type="number" id="healOut" min="0" step="0.1" placeholder="e.g. 48.0" /></div>
+    </div>
+    <div class="xfade-row">
+      <label>Blend window <span id="blendVal">120 ms</span></label>
+      <input type="range" id="blendSlider" min="20" max="500" step="10" value="120" />
+    </div>
+    <button class="btn btn-primary" id="healBtn" disabled>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      Heal seams
+    </button>
+    <div class="status-bar" id="healStatus">
+      <div class="progress-track"><div class="progress-fill" id="healProgress"></div></div>
+      <p class="status-text" id="healStatusText"></p>
+    </div>
+    <div class="download-row" id="healDownloadRow" style="display:none">
+    <button class="btn btn-download" id="healDownload" style="display:flex;width:100%">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download healed WAV
+    </button>
+    <button class="btn btn-use" id="healUse" onclick="useInTool('healDownload')" title="Load this file into all tabs"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg> Use in tool</button>
+    </div>
+    <button class="btn btn-reset" id="healReset" style="display:none">Start over</button>
+  </div>
+  <!-- ══════════ BRIDGE ══════════ -->
+  <div class="panel" id="panelBridge">
+    <div class="spec-row">
+      <span class="pill">smooth gain ride</span>
+      <span class="pill">S-curve interpolation</span>
+      <span class="pill">no pumping</span>
+    </div>
+    <p style="font-size:0.8rem; color:var(--muted); line-height:1.55;">
+      Use this after healing when the original track has a naturally quieter passage right after the splice. Select the quiet region — the tool rides the gain smoothly from the level before it to the level after it.
+    </p>
+    <div class="drop-zone" id="bridgeDrop">
+      <span class="drop-icon">🎵</span>
+      <p class="drop-label">Drop your WAV here</p>
+      <p class="drop-hint">or click to browse</p>
+      <p class="file-name" id="bridgeFileName"></p>
+    </div>
+    <div class="waveform-block" id="bridgeWaveBlock">
+      <div class="wf-toolbar">
+        <button class="wf-zoom-btn" id="bridgeZoomOut">−</button>
+        <button class="wf-zoom-btn" id="bridgeZoomIn">+</button>
+        <span class="wf-zoom-label" id="bridgeZoomLabel">1×</span>
+        <span style="color:var(--border)">·</span>
+        <span>scroll to zoom · drag to pan</span>
+        <button class="wf-zoom-reset" id="bridgeZoomReset">Reset view</button>
+      </div>
+      <div class="waveform-wrap" id="bridgeWaveWrap">
+        <canvas id="bridgeWaveCanvas"></canvas>
+        <div class="wf-selection" id="bridgeSelection"></div>
+        <div class="wf-handle left"  id="bridgeHandleIn"></div>
+        <div class="wf-handle right" id="bridgeHandleOut"></div>
+        <div class="wf-time-bar" id="bridgeTimebar"></div>
+      </div>
+      <div class="wf-minimap" id="bridgeMinimap">
+        <canvas id="bridgeMinimapCanvas"></canvas>
+        <div class="wf-mini-selection" id="bridgeMiniSelection"></div>
+        <div class="wf-mini-viewport"  id="bridgeMiniViewport"></div>
+      </div>
+      <div class="wf-readout visible" id="bridgeReadout">
+        <span>Start: <span id="bridgeReadIn">—</span></span>
+        <span>End: <span id="bridgeReadOut">—</span></span>
+        <span>Duration: <span id="bridgeReadDur">—</span></span>
+      </div>
+    </div>
+    <div class="time-row">
+      <div class="field"><label>Region start (s)</label><input type="number" id="bridgeStart" min="0" step="0.1" placeholder="e.g. 105" /></div>
+      <div class="field"><label>Region end (s)</label>  <input type="number" id="bridgeEnd"   min="0" step="0.1" placeholder="e.g. 135" /></div>
+    </div>
+    <button class="btn btn-primary" id="bridgeBtn" disabled>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Bridge levels
+    </button>
+    <div class="status-bar" id="bridgeStatus">
+      <div class="progress-track"><div class="progress-fill" id="bridgeProgress"></div></div>
+      <p class="status-text" id="bridgeStatusText"></p>
+    </div>
+    <div class="download-row" id="bridgeDownloadRow" style="display:none">
+    <button class="btn btn-download" id="bridgeDownload" style="display:flex;width:100%">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download bridged WAV
+    </button>
+    <button class="btn btn-use" id="bridgeUse" onclick="useInTool('bridgeDownload')" title="Load this file into all tabs"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg> Use in tool</button>
+    </div>
+    <button class="btn btn-reset" id="bridgeReset" style="display:none">Start over</button>
+  </div>
+
+  <!-- ══════════ DEJINX ══════════ -->
+  <div class="panel" id="panelDejinx">
+    <div class="spec-row">
+      <span class="pill">auto-detect</span>
+      <span class="pill">micro-dropout repair</span>
+      <span class="pill">full track scan</span>
+    </div>
+    <p style="font-size:0.8rem; color:var(--muted); line-height:1.55;">
+      Automatically scans for Suno synthesis dropouts — brief moments where the audio collapses in level before snapping back. No timestamps needed; just drop the file and run.
+    </p>
+    <div class="drop-zone" id="dejinxDrop">
+      <span class="drop-icon">🎵</span>
+      <p class="drop-label">Drop your WAV here</p>
+      <p class="drop-hint">or click to browse</p>
+      <p class="file-name" id="dejinxFileName"></p>
+    </div>
+    <div class="xfade-row">
+      <label>Sensitivity (dB drop to trigger) <span id="dejinxThreshVal">10 dB</span></label>
+      <input type="range" id="dejinxThresh" min="6" max="18" step="1" value="10" />
+    </div>
+    <div class="xfade-row">
+      <label>Max dropout length to fix <span id="dejinxDurVal">300 ms</span></label>
+      <input type="range" id="dejinxDur" min="80" max="500" step="10" value="300" />
+    </div>
+    <button class="btn btn-primary" id="dejinxBtn" disabled>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      Scan &amp; repair dropouts
+    </button>
+    <div class="status-bar" id="dejinxStatus">
+      <div class="progress-track"><div class="progress-fill" id="dejinxProgress"></div></div>
+      <p class="status-text" id="dejinxStatusText"></p>
+    </div>
+    <div id="dejinxRepairList" style="display:none; margin-top:0.5rem; display:none; flex-direction:column; gap:0.25rem;"></div>
+    <div class="download-row" id="dejinxDownloadRow" style="display:none">
+    <button class="btn btn-download" id="dejinxDownload" style="display:flex;width:100%">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download de-jinxed WAV
+    </button>
+    <button class="btn btn-use" id="dejinxUse" onclick="useInTool('dejinxDownload')" title="Load this file into all tabs"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg> Use in tool</button>
+    </div>
+    <button class="btn btn-reset" id="dejinxReset" style="display:none">Start over</button>
+  </div>
+
+  <!-- ══════════ REF MATCH ══════════ -->
+  <div class="panel" id="panelRefmatch">
+    <div class="spec-row">
+      <span class="pill">RMS match</span>
+      <span class="pill">frequency curve match</span>
+      <span class="pill">stereo width match</span>
+      <span class="pill">peak match</span>
+    </div>
+    <p style="font-size:0.8rem; color:var(--muted); line-height:1.55;">
+      Match your track's tonal balance, loudness, and stereo width to a professionally released reference song in the same genre. Drop your track as the target and any commercially released WAV as the reference.
+    </p>
+    <div class="drop-row">
+      <div class="drop-group">
+        <label class="drop-label-text">Your track (target)</label>
+        <div class="drop-zone" id="refTargetDrop">
+          <span class="drop-icon">🎵</span>
+          <p class="drop-label" style="font-size:0.8rem">Drop target WAV</p>
+          <p class="drop-hint">or click</p>
+          <p class="file-name" id="refTargetName"></p>
+        </div>
+      </div>
+      <div class="drop-group">
+        <label class="drop-label-text">Reference track</label>
+        <div class="drop-zone" id="refRefDrop">
+          <span class="drop-icon">⭐</span>
+          <p class="drop-label" style="font-size:0.8rem">Drop reference WAV</p>
+          <p class="drop-hint">or click</p>
+          <p class="file-name" id="refRefName"></p>
+        </div>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="refmatchBtn" disabled>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Match to reference
+    </button>
+    <div class="status-bar" id="refmatchStatus">
+      <div class="progress-track"><div class="progress-fill" id="refmatchProgress"></div></div>
+      <p class="status-text" id="refmatchStatusText"></p>
+    </div>
+    <div class="download-row" id="refmatchDownloadRow" style="display:none">
+    <button class="btn btn-download" id="refmatchDownload" style="display:flex;width:100%">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download matched WAV
+    </button>
+    <button class="btn btn-use" id="refmatchUse" onclick="useInTool('refmatchDownload')" title="Load this file into all tabs"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg> Use in tool</button>
+    </div>
+    <button class="btn btn-reset" id="refmatchReset" style="display:none">Start over</button>
+  </div>
+
+</div><!-- /card -->
+
+</div><!-- /centre -->
+
+<!-- ── Console sidebar (right) ── -->
+<aside class="console-sidebar" id="consoleSidebar">
+  <h3>Processing log</h3>
+  <div class="console-body" id="consoleBody"></div>
+</aside>
+
+</div><!-- /layout -->
+
+<footer>spotify_master.py · mastering_extras.py · splice.py · heal.py · levelbridge.py · dejinx.py · vocalride.py · server.py · runs locally · no data leaves your machine</footer>
+
+<script>
+const SERVER = 'http://localhost:5051';
+
+async function checkServer() {
+  try { const r = await fetch(`${SERVER}/ping`); if (r.ok) { document.getElementById('serverNotice').classList.remove('visible'); return true; } } catch(_){}
+  document.getElementById('serverNotice').classList.add('visible'); return false;
+}
+checkServer();
+
+// ══════════════════════════════════════════════════════════
+//  SHARED FILE + SIDEBAR
+// ══════════════════════════════════════════════════════════
+let sharedFile      = null;
+let analyseFileObj  = null;
+let masterFileObj   = null;
+let splMasterFile   = null;
+let splReplFile     = null;
+let healFileObj     = null;
+let bridgeFileObj   = null;
+let dejinxFileObj   = null;
+let refTargetFile   = null;
+let refRefFile      = null;
+
+// Single-file drop zones that should all share the same file
+const SHARED_ZONES = [
+  { zone:'analyseDrop',  name:'analyseFileName',  btn:'analyseBtn',  obj:'analyseFileObj'  },
+  { zone:'masterDrop',   name:'masterFileName',   btn:'masterBtn',   obj:'masterFileObj'   },
+  { zone:'healDrop',     name:'healFileName',     btn:'healBtn',     obj:'healFileObj'     },
+  { zone:'bridgeDrop',   name:'bridgeFileName',   btn:'bridgeBtn',   obj:'bridgeFileObj'   },
+  { zone:'dejinxDrop',   name:'dejinxFileName',   btn:'dejinxBtn',   obj:'dejinxFileObj'   },
+];
+
+function setSharedFile(file, skipTabSwitch = false) {
+  if (!file) return;
+  sharedFile = file;
+
+  // Set all file object variables
+  analyseFileObj = file;
+  masterFileObj  = file;
+  healFileObj    = file;
+  bridgeFileObj  = file;
+  dejinxFileObj  = file;
+  splMasterFile  = file;
+  refTargetFile  = file;
+
+  // Update all single-file drop zone UIs
+  const singleZones = [
+    ['analyseDrop','analyseFileName','analyseBtn'],
+    ['masterDrop', 'masterFileName', 'masterBtn' ],
+    ['healDrop',   'healFileName',   'healBtn'   ],
+    ['bridgeDrop', 'bridgeFileName', 'bridgeBtn' ],
+    ['dejinxDrop', 'dejinxFileName', 'dejinxBtn' ],
+  ];
+  singleZones.forEach(([zId, nId, bId]) => {
+    const z = document.getElementById(zId);
+    const n = document.getElementById(nId);
+    const b = document.getElementById(bId);
+    if (n) n.textContent = file.name;
+    if (z) z.classList.add('has-file');
+    // Don't blindly enable — some buttons need timestamps too
+    // (heal, bridge, splice) — their checkReady functions handle that
+  });
+  // Master and dejinx and analyse can be enabled directly
+  document.getElementById('masterBtn').disabled  = false;
+  document.getElementById('dejinxBtn').disabled  = false;
+  document.getElementById('analyseBtn').disabled = false;
+
+  // Splice master and ref target
+  const splN = document.getElementById('splMasterName');
+  const splZ = document.getElementById('splMasterDrop');
+  if (splN) splN.textContent = file.name;
+  if (splZ) splZ.classList.add('has-file');
+
+  const refN = document.getElementById('refTargetName');
+  const refZ = document.getElementById('refTargetDrop');
+  if (refN) refN.textContent = file.name;
+  if (refZ) refZ.classList.add('has-file');
+
+  // Trigger ready checks for tabs that need timestamps
+  // (guard with typeof — these are defined later in the script)
+  if (typeof checkHealReady   === 'function') checkHealReady();
+  if (typeof checkBridgeReady === 'function') checkBridgeReady();
+  if (typeof checkSpliceReady === 'function') checkSpliceReady();
+
+  // Switch to Analyse tab for new file (suppressed when called programmatically)
+  if (!skipTabSwitch) switchTab('analyse');
+  // Update sidebar
+  updateSidebar(file);
+}
+
+function updateSidebar(file) {
+  const sidebar = document.getElementById('fileSidebar');
+  sidebar.classList.add('visible');
+
+  // Basic file info from the File object
+  document.getElementById('fi-name').textContent = file.name;
+  const kb = file.size / 1024;
+  const mb = kb / 1024;
+  document.getElementById('fi-size').textContent = mb >= 1
+    ? `${mb.toFixed(1)} MB` : `${kb.toFixed(0)} KB`;
+
+  // Read with Web Audio API for accurate audio properties
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const actx   = new (window.AudioContext || window.webkitAudioContext)();
+      const buffer = await actx.decodeAudioData(e.target.result.slice(0));
+      const sr     = buffer.sampleRate;
+      const dur    = buffer.duration;
+      const ch     = buffer.numberOfChannels;
+
+      // Duration
+      const mins = Math.floor(dur / 60);
+      const secs = (dur % 60).toFixed(1);
+      document.getElementById('fi-duration').textContent =
+        `${mins}:${secs.padStart(4,'0')}  (${dur.toFixed(1)}s)`;
+
+      document.getElementById('fi-sr').textContent = `${(sr/1000).toFixed(1)} kHz`;
+      document.getElementById('fi-ch').textContent = ch === 1 ? 'Mono' : ch === 2 ? 'Stereo' : `${ch}ch`;
+
+      // Estimate bit depth from filename or default
+      const name = file.name.toLowerCase();
+      const bd = name.includes('24') ? '24-bit' : name.includes('32') ? '32-bit' : '16-bit (est.)';
+      document.getElementById('fi-bd').textContent = bd;
+
+      // Peak level
+      let peak = 0;
+      for (let c = 0; c < ch; c++) {
+        const data = buffer.getChannelData(c);
+        for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
+      }
+      const peakDb = 20 * Math.log10(Math.max(peak, 1e-12));
+      const peakEl = document.getElementById('fi-peak');
+      peakEl.textContent = `${peakDb.toFixed(1)} dBFS`;
+      peakEl.className   = `fi-value ${peakDb > -0.1 ? 'warn' : ''}`;
+
+      // Rough RMS LUFS estimate (broadband RMS ≈ LUFS for typical music)
+      let sumSq = 0, count = 0;
+      const mono = buffer.getChannelData(0);
+      for (let i = 0; i < mono.length; i++) { sumSq += mono[i]*mono[i]; count++; }
+      const rmsDb = 20 * Math.log10(Math.sqrt(sumSq/count) + 1e-12);
+      // Rough LUFS ≈ RMS + 0.7 (empirical offset for typical music)
+      const lufsEst = rmsDb + 0.7;
+      const lufsEl  = document.getElementById('fi-lufs');
+      lufsEl.textContent = `${lufsEst.toFixed(1)} LUFS (est.)`;
+      lufsEl.className   = `fi-value ${Math.abs(lufsEst + 14) < 2 ? 'green' : Math.abs(lufsEst + 14) < 5 ? '' : 'warn'}`;
+
+      // Dynamic range: spread of 2s window RMS values
+      const winSamples = Math.floor(2 * sr);
+      const rmsWindows = [];
+      for (let i = 0; i < mono.length - winSamples; i += winSamples) {
+        let s = 0;
+        for (let j = i; j < i+winSamples; j++) s += mono[j]*mono[j];
+        rmsWindows.push(20*Math.log10(Math.sqrt(s/winSamples)+1e-12));
+      }
+      if (rmsWindows.length > 2) {
+        rmsWindows.sort((a,b)=>a-b);
+        const dr = rmsWindows[Math.floor(rmsWindows.length*0.95)]
+                 - rmsWindows[Math.floor(rmsWindows.length*0.05)];
+        document.getElementById('fi-dr').textContent = `${dr.toFixed(1)} dB`;
+      }
+
+      // Mini waveform
+      drawSidebarWave(buffer);
+
+      // ID3 / WAV metadata tags from the raw bytes
+      readWavMeta(e.target.result, file.name);
+
+      actx.close();
+    } catch(err) {
+      console.error('Sidebar decode error:', err);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function drawSidebarWave(buffer) {
+  const canvas = document.getElementById('sidebarWaveCanvas');
+  const w = canvas.parentElement.clientWidth;
+  const h = 48;
+  canvas.width  = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+
+  const data  = buffer.getChannelData(0);
+  const step  = Math.ceil(data.length / w);
+  const mid   = h / 2;
+
+  for (let x = 0; x < w; x++) {
+    let max = 0;
+    for (let i = x*step; i < Math.min((x+1)*step, data.length); i++)
+      max = Math.max(max, Math.abs(data[i]));
+    const barH = Math.max(1, max * (h - 4));
+    ctx.fillStyle = '#1db954';
+    ctx.fillRect(x, mid - barH/2, 1, barH);
+  }
+}
+
+async function useInTool(downloadBtnId) {
+  const dlBtn   = document.getElementById(downloadBtnId);
+  const useBtn  = document.getElementById(downloadBtnId.replace('Download', 'Use'));
+  const filename = dlBtn ? dlBtn.dataset.filename : null;
+
+  if (!filename) { alert('Process the file first, then click Use in tool.'); return; }
+
+  if (useBtn) { useBtn.disabled = true; useBtn.textContent = '⏳ Loading…'; }
+
+  try {
+    const res = await fetch(`${SERVER}/download?file=${encodeURIComponent(filename)}`);
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+    const blob = await res.blob();
+    const file = new File([blob], filename, { type: 'audio/wav' });
+    setSharedFile(file);
+
+    if (useBtn) {
+      useBtn.disabled = false;
+      useBtn.innerHTML = '✓ Loaded into all tabs';
+      setTimeout(() => {
+        if (useBtn) useBtn.innerHTML = useBtnInner;
+      }, 2500);
+    }
+  } catch (err) {
+    if (useBtn) { useBtn.disabled = false; useBtn.textContent = '✗ Failed'; }
+    console.error('useInTool:', err);
+  }
+}
+
+const useBtnInner = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg> Use in tool';
+
+function readWavMeta(arrayBuffer, filename) {
+  // Parse WAV LIST/INFO chunk for embedded metadata tags
+  const view   = new DataView(arrayBuffer);
+  const bytes  = new Uint8Array(arrayBuffer);
+  const text   = new TextDecoder('latin1');
+  const tags   = {};
+
+  // WAV: scan for LIST chunk containing INFO sub-chunks
+  let i = 12; // skip RIFF header
+  while (i < bytes.length - 8) {
+    const chunkId   = text.decode(bytes.slice(i, i+4));
+    const chunkSize = view.getUint32(i+4, true);
+    if (chunkId === 'LIST') {
+      const listType = text.decode(bytes.slice(i+8, i+12));
+      if (listType === 'INFO') {
+        let j = i + 12;
+        while (j < i + 8 + chunkSize - 4) {
+          const tag  = text.decode(bytes.slice(j, j+4)).replace(/\0/g,'');
+          const sz   = view.getUint32(j+4, true);
+          const val  = text.decode(bytes.slice(j+8, j+8+sz)).replace(/\0/g,'').trim();
+          if (val) tags[tag] = val;
+          j += 8 + sz + (sz % 2);
+        }
+      }
+      break;
+    }
+    i += 8 + chunkSize + (chunkSize % 2);
+    if (chunkSize === 0) break;
+  }
+
+  // Map tag codes to friendly names
+  const tagNames = {
+    INAM:'Title', IART:'Artist', IALB:'Album', ICRD:'Year',
+    IGNR:'Genre', ICMT:'Comment', ISFT:'Software', IENG:'Engineer',
+    ICOP:'Copyright', IPRD:'Product', ISRC:'Source'
+  };
+
+  const metaEl    = document.getElementById('fi-meta');
+  const dividerEl = document.getElementById('fi-meta-divider');
+  const known     = Object.entries(tags).filter(([k]) => tagNames[k]);
+
+  if (known.length === 0) {
+    metaEl.innerHTML = '';
+    dividerEl.style.display = 'none';
+    return;
+  }
+
+  dividerEl.style.display = '';
+  metaEl.innerHTML = known.map(([k, v]) =>
+    `<div class="fi-row">
+       <span class="fi-label">${tagNames[k]||k}</span>
+       <span class="fi-value">${v}</span>
+     </div>`
+  ).join('');
+}
+
+function switchTab(tab) {
+  ['analyse','master','splice','heal','bridge','dejinx','refmatch'].forEach(t => {
+    const T = t.charAt(0).toUpperCase()+t.slice(1);
+    document.getElementById('tab'+T).classList.toggle('active', t===tab);
+    document.getElementById('panel'+T).classList.toggle('active', t===tab);
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+//  ANALYSE
+// ══════════════════════════════════════════════════════════
+
+initDrop('analyseDrop','analyseFile','analyseFileName', file => {
+  analyseFileObj = file;
+  setSharedFile(file);
+  document.getElementById('analyseBtn').disabled = false;
+  document.getElementById('analyseReport').style.display = 'none';
+  document.getElementById('analyseStatus').classList.remove('visible');
+});
+
+document.getElementById('analyseBtn').addEventListener('click', async () => {
+  if (!analyseFileObj || !await checkServer()) return;
+  document.getElementById('analyseBtn').disabled = true;
+  document.getElementById('analyseReport').style.display = 'none';
+  setStatus('analyseStatus','analyseProgress','analyseStatusText','busy','Measuring loudness…');
+  const timer = stageTimer('analyseStatusText',[
+    'Measuring loudness…','Analysing stereo image…','Profiling spectrum…',
+    'Checking sibilance…','Detecting transients…','Scanning for dropouts…',
+    'Identifying engine…','Building recommendations…'
+  ], 700);
+  const form = new FormData(); form.append('file', analyseFileObj);
+  try {
+    const res = await fetch(`${SERVER}/analyse`, {method:'POST', body:form});
+    clearInterval(timer);
+    const text = await res.text();
+    let d;
+    try { d = JSON.parse(text); }
+    catch(_) {
+      throw new Error(`Server returned non-JSON: ${text.slice(0,200)}`);
+    }
+    if (!res.ok) throw new Error(d.trace || d.error || `Error ${res.status}`);
+    setStatus('analyseStatus','analyseProgress','analyseStatusText','success','✓ Analysis complete');
+    renderReport(d);
+    document.getElementById('analyseReport').style.display = 'flex';
+    document.getElementById('analyseBtn').disabled = false;
+  } catch(err) {
+    clearInterval(timer);
+    setStatus('analyseStatus','analyseProgress','analyseStatusText','error',`✗ ${err.message}`);
+    document.getElementById('analyseBtn').disabled = false;
+  }
+});
+
+function renderReport(d) {
+  const report = document.getElementById('analyseReport');
+  const l = d.loudness, s = d.stereo, sp = d.spectrum, sib = d.sibilance;
+  const tr = d.transients, dr = d.dropouts, eng = d.engine, rec = d.recommended;
+
+  function row(label, value, cls='') {
+    return `<div class="report-row"><span class="label">${label}</span><span class="value ${cls}">${value}</span></div>`;
+  }
+  function cls_lufs(v) { return Math.abs(v+14)<2?'good':Math.abs(v+14)<5?'warn':'bad'; }
+  function cls_tp(v)   { return v<=-1?'good':v<0?'warn':'bad'; }
+
+  const isSuno = eng.engine === 'Suno';
+  const engBadge = `<span class="engine-badge ${isSuno?'engine-suno':'engine-other'}">${eng.engine}</span>`;
+
+  let html = '';
+
+  // ── Overview ──
+  html += `<div class="report-section">
+    <h3>Overview</h3>
+    ${row('File', d.file)}
+    ${row('Duration', `${Math.floor(d.duration_s/60)}:${(d.duration_s%60).toFixed(0).padStart(2,'0')}  ·  ${d.sample_rate/1000}kHz  ·  ${d.channels}ch`)}
+    ${row('Engine detected', engBadge + (eng.confidence_score>3?' (confident)':eng.confidence_score>1?' (likely)':' (uncertain)'))}
+  </div>`;
+
+  // ── Loudness ──
+  html += `<div class="report-section">
+    <h3>Loudness</h3>
+    ${row('Integrated LUFS', `${l.lufs.toFixed(1)} LUFS`, cls_lufs(l.lufs))}
+    ${row('True peak', `${l.true_peak_db.toFixed(1)} dBTP`, cls_tp(l.true_peak_db))}
+    ${row('Peak', `${l.peak_db.toFixed(1)} dBFS`)}
+    ${row('Dynamic range', `${l.dynamic_range_db.toFixed(1)} dB`, l.dynamic_range_db>8?'good':l.dynamic_range_db>4?'warn':'bad')}
+  </div>`;
+
+  // ── Stereo ──
+  if (!s.mono) {
+    const wmp = s.worst_mid_pct;
+    html += `<div class="report-section">
+      <h3>Stereo Image</h3>
+      ${row('Average mid%', `${s.mid_pct.toFixed(0)}%`, s.mid_pct>60?'good':s.mid_pct>50?'warn':'bad')}
+      ${row('Worst mid% (wide moments)', `${wmp.toFixed(0)}%`, wmp>55?'good':wmp>45?'warn':'bad')}
+      ${row('Sub-bass in side vs mid', `${s.sub_side_vs_mid_db.toFixed(1)} dB`, s.sub_side_vs_mid_db<-10?'good':s.sub_side_vs_mid_db<-6?'warn':'bad')}
+      ${row('Vocal L/R sibilance imbalance', `${s.sibilance_lr_diff_db.toFixed(1)} dB`, s.sibilance_lr_diff_db<2?'good':s.sibilance_lr_diff_db<3.5?'warn':'bad')}
+    </div>`;
+  }
+
+  // ── Spectrum ──
+  html += `<div class="report-section">
+    <h3>Spectrum</h3>
+    ${row('Air above 16kHz', sp.has_air_above_16k?'Present':'Hard cutoff (Suno)', sp.has_air_above_16k?'good':'warn')}
+    ${row('8–16kHz flatness', sp.spectral_variance<0.4?'Very flat (diffusion haze)':sp.spectral_variance<0.8?'Somewhat flat':'Natural', sp.spectral_variance<0.4?'warn':sp.spectral_variance<0.8?'':'good')}
+    ${row('Low-mid mud (300–500Hz)', sp.mud_diff_db>3?`+${sp.mud_diff_db.toFixed(1)} dB above mid (muddy)`:sp.mud_diff_db>1?`+${sp.mud_diff_db.toFixed(1)} dB (slight)`:'Clean', sp.mud_diff_db>3?'warn':'')}
+    ${row('Presence harshness (2–4kHz)', sp.harsh_diff_db>3?`+${sp.harsh_diff_db.toFixed(1)} dB (harsh)`:sp.harsh_diff_db>1?`+${sp.harsh_diff_db.toFixed(1)} dB (slight)`:'Clean', sp.harsh_diff_db>3?'warn':'')}
+  </div>`;
+
+  // ── Issues ──
+  html += `<div class="report-section">
+    <h3>Issues</h3>
+    ${row('Sibilance peaks', `${sib.headroom_db.toFixed(0)} dB above typical`, sib.headroom_db<8?'good':sib.headroom_db<12?'warn':'bad')}
+    ${row('Transient crest factor', `${tr.crest_factor_db.toFixed(1)} dB  (${tr.onset_count} onsets)`, tr.crest_factor_db>12?'good':tr.crest_factor_db>8?'warn':'bad')}
+    ${row('Synthesis dropouts', dr.dropout_count===0?'None detected':`${dr.dropout_count} detected`, dr.dropout_count===0?'good':dr.dropout_count<5?'warn':'bad')}
+  </div>`;
+
+  // ── Recommendations ──
+  const notes = rec.notes || [];
+  if (notes.length) {
+    let rhtml = notes.map(([cat,msg,setting]) =>
+      `<div class="rec-item">
+        <span class="rec-cat">${cat}</span>
+        <div class="rec-body">
+          <span class="rec-setting">→ ${setting}</span>
+          <span class="rec-msg">${msg}</span>
+        </div>
+      </div>`
+    ).join('');
+    html += `<div class="report-section"><h3>Recommendations</h3>${rhtml}</div>`;
+  }
+
+  // ── Apply button ──
+  const pg = (rec.presence_gain !== undefined ? rec.presence_gain : 0.25);
+  const dt = (rec.deess_threshold !== undefined ? rec.deess_threshold : 2);
+  const dm = rec.deess_mode || 'auto';
+  const vb = (rec.vocal_boost_db !== undefined ? rec.vocal_boost_db : 4);
+  // Store recommendations globally for the Master tab's "Apply" button
+  window._lastAnalysis = rec;
+
+  report.innerHTML = html;
+  // Show the "Apply analysis" button on Master tab whenever we have results
+  document.getElementById('applyAnalysisBtn').style.display =
+    (window._lastAnalysis) ? 'flex' : 'none';
+}
+
+function applyRecommendations() {
+  const rec = window._lastAnalysis;
+  if (!rec) return;
+
+  const presenceGain    = rec.presence_gain    !== undefined ? rec.presence_gain    : 0.25;
+  const deessThreshold  = rec.deess_threshold  !== undefined ? rec.deess_threshold  : -2;
+  const vocalBoost      = rec.vocal_boost_db   !== undefined ? rec.vocal_boost_db   : 0;
+  const macroTarget     = rec.macro_target_db  !== undefined ? rec.macro_target_db  : 3.5;
+
+  // Width slider
+  const slider = document.getElementById('widthSlider');
+  slider.value = presenceGain;
+  updateWidthLabel(presenceGain);
+
+  // De-esser — only set if non-trivial, open Advanced panel if so
+  const deessSlider = document.getElementById('deessSlider');
+  const dt = Math.round(deessThreshold);
+  deessSlider.value = dt;
+  const labels = {'-2':'Off','0':'Very gentle','1':'Gentle','2':'Light','3':'Medium','4':'Firm','5':'Strong','6':'Aggressive','7':'Max'};
+  document.getElementById('deessVal').textContent = labels[String(dt)] || String(dt);
+  if (dt > 0) openAdvanced();
+
+  // Vocal ride
+  document.getElementById('vocalSlider').value = vocalBoost;
+  document.getElementById('vocalVal').textContent = vocalBoost === 0 ? 'Off' : `+${vocalBoost} dB max`;
+  if (vocalBoost > 0) openAdvanced();
+
+  // Macro dynamics
+  const macroSlider = document.getElementById('macroSlider');
+  macroSlider.value = macroTarget;
+  document.getElementById('macroVal').textContent = macroTarget === 0 ? 'Off' : `${macroTarget} dB`;
+
+  // Transfer file to all tabs without switching away from Master
+  if (analyseFileObj) setSharedFile(analyseFileObj, true);
+
+  // Stay on / switch to Master tab
+  switchTab('master');
+
+  // Flash width slider only (visible by default)
+  slider.style.accentColor = '#1db954';
+  setTimeout(() => { slider.style.accentColor = ''; }, 1500);
+
+  // Confirmation banner
+  const statusBar = document.getElementById('masterStatus');
+  const statusTxt = document.getElementById('masterStatusText');
+  const fill      = document.getElementById('masterProgress');
+  statusBar.classList.add('visible');
+  fill.classList.remove('indeterminate');
+  fill.style.width = '100%';
+  statusTxt.className = 'status-text success';
+  const wDb    = (20 * Math.log10(presenceGain + 1)).toFixed(1);
+  const wLabel = presenceGain === 0 ? '0 dB' : `+${wDb} dB`;
+  statusTxt.textContent =
+    `✓ Settings applied — width ${wLabel}  ·  de-esser ${labels[String(dt)] || dt}  ·  vocal +${vb}dB` +
+    (analyseFileObj ? `  ·  ${analyseFileObj.name}` : '');
+  setTimeout(() => statusBar.classList.remove('visible'), 5000);
+}
+
+function initDrop(zoneId, inputId, nameId, onFile) {
+  const zone=document.getElementById(zoneId), input=document.getElementById(inputId), label=document.getElementById(nameId);
+  function accept(f) {
+    if (!f) return;
+    if (!f.name.toLowerCase().endsWith('.wav')) { alert('Please choose a WAV file.'); return; }
+    label.textContent=f.name; zone.classList.add('has-file'); onFile(f);
+  }
+  zone.addEventListener('click', ()=>input.click());
+  input.addEventListener('change', ()=>{ accept(input.files[0]); input.value=''; });
+  zone.addEventListener('dragover',  e=>{ e.preventDefault(); e.stopPropagation(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', e=>{ e.stopPropagation(); zone.classList.remove('drag-over'); });
+  zone.addEventListener('drop',      e=>{ e.preventDefault(); e.stopPropagation(); zone.classList.remove('drag-over'); accept(e.dataTransfer.files[0]); });
+}
+
+function setStatus(barId, fillId, textId, state, msg) {
+  const bar=document.getElementById(barId), fill=document.getElementById(fillId), txt=document.getElementById(textId);
+  bar.classList.add('visible');
+  txt.className='status-text'+(state==='success'?' success':state==='error'?' error':'');
+  txt.textContent=msg;
+  if (state==='busy') { fill.style.width='0%'; fill.classList.add('indeterminate'); }
+  else { fill.classList.remove('indeterminate'); fill.style.width=state==='success'?'100%':'0%'; }
+}
+
+function stageTimer(textId, stages, ms) {
+  let i=0; return setInterval(()=>{ if(i<stages.length) document.getElementById(textId).textContent=stages[i++]; }, ms);
+}
+
+// ══════════════════════════════════════════════════════════
+//  WAVEFORM EDITOR  — with zoom + pan + minimap
+// ══════════════════════════════════════════════════════════
+function WaveformEditor(prefix, onRangeChange) {
+  const block       = document.getElementById(prefix+'WaveBlock');
+  const wrap        = document.getElementById(prefix+'WaveWrap');
+  const canvas      = document.getElementById(prefix+'WaveCanvas');
+  const selection   = document.getElementById(prefix+'Selection');
+  const hIn         = document.getElementById(prefix+'HandleIn');
+  const hOut        = document.getElementById(prefix+'HandleOut');
+  const timebar     = document.getElementById(prefix+'Timebar');
+  const readIn      = document.getElementById(prefix+'ReadIn');
+  const readOut     = document.getElementById(prefix+'ReadOut');
+  const readDur     = document.getElementById(prefix+'ReadDur');
+  const minimap     = document.getElementById(prefix+'Minimap');
+  const miniCanvas  = document.getElementById(prefix+'MinimapCanvas');
+  const miniSel     = document.getElementById(prefix+'MiniSelection');
+  const miniVP      = document.getElementById(prefix+'MiniViewport');
+  const zoomInBtn   = document.getElementById(prefix+'ZoomIn');
+  const zoomOutBtn  = document.getElementById(prefix+'ZoomOut');
+  const zoomLabel   = document.getElementById(prefix+'ZoomLabel');
+  const zoomReset   = document.getElementById(prefix+'ZoomReset');
+
+  let duration = 0;
+  let peaks    = [];        // normalised peak array (0–1), length 4000
+  let inPos    = 0.2;       // selection in,  as fraction of full track (0–1)
+  let outPos   = 0.5;       // selection out, as fraction of full track (0–1)
+
+  // Viewport: which portion of the track is visible in the main canvas
+  let vpStart = 0.0;        // fraction
+  let vpEnd   = 1.0;        // fraction
+  const MIN_VP_SPAN = 0.01; // minimum viewport span (≈ 1% of track = ~0.3s for a 30s file)
+  const MAX_ZOOM = 100;
+
+  function vpSpan() { return vpEnd - vpStart; }
+  function zoom()   { return Math.round(1 / vpSpan()); }
+
+  // Convert normalised track position → fraction within the current viewport
+  function trackToView(pos) { return (pos - vpStart) / vpSpan(); }
+  // Convert viewport fraction → normalised track position
+  function viewToTrack(v)   { return vpStart + v * vpSpan(); }
+
+  // ── Draw main waveform ────────────────────────────────────────────────────
+  function draw() {
+    const w = wrap.clientWidth;
+    const h = wrap.clientHeight;
+    canvas.width  = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, w, h);
+    if (!peaks.length) return;
+
+    const mid  = h / 2;
+    // Which peaks are visible?
+    const p0   = vpStart * peaks.length;
+    const p1   = vpEnd   * peaks.length;
+    const span = p1 - p0;
+
+    for (let x = 0; x < w; x++) {
+      const lo = Math.floor(p0 + (x     / w) * span);
+      const hi = Math.ceil (p0 + ((x+1) / w) * span);
+      let max = 0;
+      for (let i = lo; i < Math.min(hi, peaks.length); i++) max = Math.max(max, peaks[i]);
+
+      // Is this pixel inside the selection?
+      const trackFrac = viewToTrack(x / w);
+      const inside = trackFrac >= inPos && trackFrac <= outPos;
+      ctx.fillStyle = inside ? '#1db954' : '#2a2a3a';
+      const barH = Math.max(1, max * (h - 18));  // leave 16px for time labels
+      ctx.fillRect(x, mid - barH/2, 1, barH);
+    }
+
+    // Time ticks within viewport
+    timebar.innerHTML = '';
+    const visibleDur = vpSpan() * duration;
+    const tickSec    = niceTick(visibleDur);
+    const tStart     = Math.ceil(vpStart * duration / tickSec) * tickSec;
+    for (let t = tStart; t <= vpEnd * duration + 0.001; t += tickSec) {
+      const frac = t / duration;
+      const xPct = trackToView(frac) * 100;
+      if (xPct < 0 || xPct > 100) continue;
+      const el = document.createElement('span');
+      el.className = 'wf-time-label';
+      el.style.left = xPct + '%';
+      el.textContent = fmtTime(t);
+      timebar.appendChild(el);
+    }
+
+    // Handles — only show if within viewport (clamp to edges if partially visible)
+    const inView  = Math.max(0, Math.min(trackToView(inPos),  1));
+    const outView = Math.max(0, Math.min(trackToView(outPos), 1));
+    hIn.style.left    = (inView  * 100) + '%';
+    hOut.style.left   = (outView * 100) + '%';
+    // Hide handle if its track pos is outside the viewport
+    hIn.style.opacity  = (inPos  >= vpStart && inPos  <= vpEnd) ? '1' : '0.25';
+    hOut.style.opacity = (outPos >= vpStart && outPos <= vpEnd) ? '1' : '0.25';
+
+    // Selection overlay — clamp to visible portion
+    const selL = Math.max(0, trackToView(inPos))  * 100;
+    const selR = Math.min(1, trackToView(outPos)) * 100;
+    selection.style.left  = selL + '%';
+    selection.style.width = Math.max(0, selR - selL) + '%';
+
+    // Readout
+    readIn.textContent  = fmtTime(inPos  * duration);
+    readOut.textContent = fmtTime(outPos * duration);
+    readDur.textContent = fmtTime((outPos - inPos) * duration);
+
+    // Zoom label
+    const z = zoom();
+    zoomLabel.textContent = z + '×';
+
+    // Update minimap overlays
+    drawMinimap();
+  }
+
+  // ── Draw minimap ──────────────────────────────────────────────────────────
+  function drawMinimap() {
+    const w = minimap.clientWidth;
+    const h = minimap.clientHeight;
+    miniCanvas.width  = w;
+    miniCanvas.height = h;
+    const ctx = miniCanvas.getContext('2d');
+    ctx.clearRect(0, 0, w, h);
+    if (!peaks.length) return;
+
+    const mid  = h / 2;
+    const step = peaks.length / w;
+    for (let x = 0; x < w; x++) {
+      const lo = Math.floor(x * step);
+      const hi = Math.ceil((x+1) * step);
+      let max = 0;
+      for (let i = lo; i < Math.min(hi, peaks.length); i++) max = Math.max(max, peaks[i]);
+      const trackFrac = x / w;
+      const inSel = trackFrac >= inPos && trackFrac <= outPos;
+      ctx.fillStyle = inSel ? 'rgba(29,185,84,0.7)' : '#2a2a3a';
+      ctx.fillRect(x, mid - max*(h-2)/2, 1, Math.max(1, max*(h-2)));
+    }
+
+    // Viewport indicator
+    miniVP.style.left  = (vpStart * 100) + '%';
+    miniVP.style.width = (vpSpan() * 100) + '%';
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function niceTick(dur) {
+    const targets = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120];
+    const want = 6;
+    return targets.find(t => dur/t <= want) || 60;
+  }
+  function fmtTime(s) {
+    const m = Math.floor(s/60);
+    const sec = (s%60).toFixed(1);
+    return m > 0 ? `${m}:${sec.padStart(4,'0')}` : `${sec}s`;
+  }
+
+  // ── Zoom helpers ──────────────────────────────────────────────────────────
+  function zoomAround(centre, factor) {
+    // centre is a track fraction (0–1) to zoom around
+    const halfSpan = vpSpan() / 2 / factor;
+    let newStart = centre - halfSpan;
+    let newEnd   = centre + halfSpan;
+    // Clamp
+    if (newStart < 0) { newEnd -= newStart; newStart = 0; }
+    if (newEnd   > 1) { newStart -= (newEnd - 1); newEnd = 1; }
+    newStart = Math.max(0, newStart);
+    newEnd   = Math.min(1, newEnd);
+    if ((newEnd - newStart) < MIN_VP_SPAN) return; // max zoom
+    vpStart = newStart;
+    vpEnd   = newEnd;
+    draw();
+  }
+
+  function resetZoom() { vpStart = 0; vpEnd = 1; draw(); }
+
+  // ── Load ──────────────────────────────────────────────────────────────────
+  this.load = function(file) {
+    const reader = new FileReader();
+    reader.onload = async e => {
+      try {
+        const actx   = new (window.AudioContext || window.webkitAudioContext)();
+        const buffer = await actx.decodeAudioData(e.target.result);
+        duration = buffer.duration;
+        const data = buffer.getChannelData(0);
+        const N    = 4000;
+        const step = data.length / N;
+        peaks = new Array(N);
+        for (let i = 0; i < N; i++) {
+          const lo = Math.floor(i*step), hi = Math.min(Math.ceil((i+1)*step), data.length);
+          let max = 0;
+          for (let j = lo; j < hi; j++) max = Math.max(max, Math.abs(data[j]));
+          peaks[i] = max;
+        }
+        inPos = 0.2; outPos = 0.5;
+        vpStart = 0; vpEnd = 1;
+        block.classList.add('visible');
+        draw();
+        emitChange();
+        actx.close();
+      } catch(err) { console.error('Waveform decode:', err); }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  function emitChange() { onRangeChange(inPos * duration, outPos * duration); }
+
+  this.setFromInputs = function(inSec, outSec) {
+    if (!duration) return;
+    inPos  = Math.max(0, Math.min(inSec  / duration, 0.99));
+    outPos = Math.max(inPos + 0.001, Math.min(outSec / duration, 1.0));
+    draw();
+  };
+
+  // ── Zoom buttons ──────────────────────────────────────────────────────────
+  zoomInBtn.addEventListener('click',  () => zoomAround((vpStart+vpEnd)/2, 2));
+  zoomOutBtn.addEventListener('click', () => zoomAround((vpStart+vpEnd)/2, 0.5));
+  zoomReset.addEventListener('click',  () => resetZoom());
+
+  // ── Scroll-to-zoom on main canvas ─────────────────────────────────────────
+  wrap.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect   = wrap.getBoundingClientRect();
+    const cursor = vpStart + ((e.clientX - rect.left) / rect.width) * vpSpan();
+    const factor = e.deltaY < 0 ? 1.4 : 1/1.4;
+    zoomAround(cursor, factor);
+  }, { passive: false });
+
+  // ── Drag handles + pan ───────────────────────────────────────────────────
+  let dragging = null;   // 'in' | 'out' | 'pan'
+  let panStartX = 0, panVpStart = 0, panVpEnd = 0;
+
+  function trackFracFromClientX(clientX) {
+    const rect = wrap.getBoundingClientRect();
+    return viewToTrack(Math.max(0, Math.min((clientX - rect.left) / rect.width, 1)));
+  }
+
+  function onMove(clientX) {
+    if (dragging === 'pan') {
+      const rect  = wrap.getBoundingClientRect();
+      const delta = -((clientX - panStartX) / rect.width) * vpSpan();
+      let ns = panVpStart + delta;
+      let ne = panVpEnd   + delta;
+      if (ns < 0) { ne -= ns; ns = 0; }
+      if (ne > 1) { ns -= (ne-1); ne = 1; }
+      vpStart = Math.max(0, ns);
+      vpEnd   = Math.min(1, ne);
+      draw();
+      return;
+    }
+    const MIN_GAP = MIN_VP_SPAN * 0.1;
+    const pos = trackFracFromClientX(clientX);
+    if (dragging === 'in')  { inPos  = Math.max(0, Math.min(pos, outPos - MIN_GAP)); }
+    if (dragging === 'out') { outPos = Math.min(1, Math.max(pos, inPos  + MIN_GAP)); }
+    draw();
+    emitChange();
+  }
+
+  function getClientX(e) { return e.touches ? e.touches[0].clientX : e.clientX; }
+
+  function onUp() {
+    dragging = null;
+    document.removeEventListener('mousemove', onDocMove);
+    document.removeEventListener('mouseup',   onDocUp);
+    document.removeEventListener('touchmove', onDocTouch);
+    document.removeEventListener('touchend',  onDocUp);
+  }
+  function onDocMove(e)  { onMove(getClientX(e)); }
+  function onDocTouch(e) { e.preventDefault(); onMove(getClientX(e)); }
+  function onDocUp()     { onUp(); }
+
+  function startDrag(role, clientX) {
+    dragging = role;
+    if (role === 'pan') { panStartX = clientX; panVpStart = vpStart; panVpEnd = vpEnd; }
+    document.addEventListener('mousemove', onDocMove);
+    document.addEventListener('mouseup',   onDocUp);
+    document.addEventListener('touchmove', onDocTouch, { passive: false });
+    document.addEventListener('touchend',  onDocUp);
+  }
+
+  hIn.addEventListener('mousedown',   e => { e.preventDefault(); e.stopPropagation(); startDrag('in',  e.clientX); });
+  hOut.addEventListener('mousedown',  e => { e.preventDefault(); e.stopPropagation(); startDrag('out', e.clientX); });
+  hIn.addEventListener('touchstart',  e => { e.stopPropagation(); startDrag('in',  getClientX(e)); }, { passive: false });
+  hOut.addEventListener('touchstart', e => { e.stopPropagation(); startDrag('out', getClientX(e)); }, { passive: false });
+
+  wrap.addEventListener('mousedown', e => {
+    if (e.target === hIn || e.target === hOut) return;
+    // Right-click or middle: pan. Left-click: move nearest handle.
+    if (e.button === 1 || e.button === 2) { e.preventDefault(); startDrag('pan', e.clientX); return; }
+    // Alt+drag = pan
+    if (e.altKey) { e.preventDefault(); startDrag('pan', e.clientX); return; }
+    // Otherwise snap nearest handle
+    const pos  = trackFracFromClientX(e.clientX);
+    const dIn  = Math.abs(pos - inPos);
+    const dOut = Math.abs(pos - outPos);
+    startDrag(dIn < dOut ? 'in' : 'out', e.clientX);
+  });
+
+  wrap.addEventListener('contextmenu', e => e.preventDefault());
+
+  // ── Click on minimap to jump viewport ────────────────────────────────────
+  minimap.addEventListener('click', e => {
+    const rect   = minimap.getBoundingClientRect();
+    const centre = (e.clientX - rect.left) / rect.width;
+    const half   = vpSpan() / 2;
+    vpStart = Math.max(0, centre - half);
+    vpEnd   = Math.min(1, centre + half);
+    if (vpEnd - vpStart < vpSpan()) { /* keep span */ }
+    draw();
+  });
+
+  // ── Resize ────────────────────────────────────────────────────────────────
+  new ResizeObserver(() => { if (peaks.length) draw(); }).observe(wrap);
+  new ResizeObserver(() => { if (peaks.length) drawMinimap(); }).observe(minimap);
+
+  // ── Reset ─────────────────────────────────────────────────────────────────
+  this.reset = function() {
+    peaks = []; duration = 0; vpStart = 0; vpEnd = 1;
+    block.classList.remove('visible');
+    canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+    miniCanvas.getContext('2d').clearRect(0,0,miniCanvas.width,miniCanvas.height);
+    selection.style.left='0%'; selection.style.width='0%';
+    hIn.style.left='0%'; hOut.style.left='50%';
+    timebar.innerHTML='';
+  };
+}
+
+// ══════════════════════════════════════════════════════════
+//  MASTER
+// ══════════════════════════════════════════════════════════
+initDrop('masterDrop','masterFile','masterFileName', file => {
+  masterFileObj=file;
+  setSharedFile(file);
+  document.getElementById('masterBtn').disabled=false;
+  document.getElementById('masterDownloadRow').style.display='none';
+  document.getElementById('masterReset').style.display='none';
+  document.getElementById('masterStatus').classList.remove('visible');
+});
+// Preset buttons snap the slider and update active state
+
+// Re-enable master button when any setting changes after a completed run
+function toggleExpert() {
+  const panel = document.getElementById('expertPanel');
+  const btn   = document.getElementById('expertToggle');
+  const open  = panel.style.display === 'none';
+  panel.style.display = open ? 'flex' : 'none';
+  btn.classList.toggle('open', open);
+  document.getElementById('expertChevron').style.transform = open ? 'rotate(180deg)' : '';
+}
+
+function updateExpertLabel(id, val, prefix, suffix) {
+  const n = parseFloat(val);
+  document.getElementById(id).textContent = (n >= 0 ? prefix : '') + n + ' ' + suffix;
+}
+
+function resetExpertDefaults() {
+  const defaults = {
+    eqShelfSlider:   1.5,  eqMudSlider:   -2,
+    airBlendSlider:  0.018, dehazeSlider:   0.04,
+    satDriveSlider:  6,    satMixSlider:   0.15,
+    compThreshSlider:-18,  compRatioSlider: 2,
+    transientSlider: 2.5,  dyneqSlider:    3,
+  };
+  Object.entries(defaults).forEach(([id, val]) => {
+    document.getElementById(id).value = val;
+    document.getElementById(id).dispatchEvent(new Event('input'));
+  });
+}
+
+function toggleAdvanced() {
+  const panel  = document.getElementById('advancedPanel');
+  const btn    = document.getElementById('advancedToggle');
+  const open   = panel.style.display === 'none';
+  panel.style.display = open ? 'flex' : 'none';
+  btn.classList.toggle('open', open);
+}
+
+function openAdvanced() {
+  const panel = document.getElementById('advancedPanel');
+  if (panel.style.display === 'none') {
+    panel.style.display = 'flex';
+    document.getElementById('advancedToggle').classList.add('open');
+  }
+}
+
+function resetMasterIfDone() {
+  // Hide result and re-enable button so user can run again with new settings
+  document.getElementById('masterDownloadRow').style.display = 'none';
+  document.getElementById('masterReset').style.display = 'none';
+  document.getElementById('masterStatus').classList.remove('visible');
+  // Re-enable button only if a file is loaded
+  if (masterFileObj) {
+    document.getElementById('masterBtn').disabled = false;
+  }
+}
+
+function setWidthPreset(val) {
+  document.getElementById('widthSlider').value = val;
+  updateWidthLabel(val);
+}
+
+function updateWidthLabel(val) {
+  val = parseFloat(val);
+  const db = (20 * Math.log10(val + 1)).toFixed(1);
+  document.getElementById('widthVal').textContent = val === 0 ? '0 dB' : `+${db} dB`;
+  // Sync preset button active states
+  document.getElementById('presetOther').classList.toggle('active', val === 0);
+  document.getElementById('presetSuno').classList.toggle('active', val === 0.25);
+  document.getElementById('presetWide').classList.toggle('active', val === 0.5);
+}
+
+document.getElementById('widthSlider').addEventListener('input', function() {
+  resetMasterIfDone();
+  updateWidthLabel(this.value);
+});
+
+document.getElementById('deessSlider').addEventListener('input', function() {
+  resetMasterIfDone();
+  const labels = {'-2':'Off','0':'Very gentle','1':'Gentle','2':'Light','3':'Medium','4':'Firm','5':'Strong','6':'Aggressive','7':'Max'};
+  document.getElementById('deessVal').textContent = labels[this.value] || this.value;
+});
+
+document.getElementById('macroSlider').addEventListener('input', function() {
+  resetMasterIfDone();
+  const v = parseFloat(this.value);
+  document.getElementById('macroVal').textContent = v === 0 ? 'Off' : `${v} dB`;
+});
+
+document.getElementById('vocalSlider').addEventListener('input', function() {
+  resetMasterIfDone();
+  const v = parseFloat(this.value);
+  document.getElementById('vocalVal').textContent = v === 0 ? 'Off' : `+${v} dB max`;
+});
+
+document.getElementById('masterBtn').addEventListener('click', async ()=>{
+  if (!masterFileObj || !await checkServer()) return;
+  document.getElementById('masterBtn').disabled=true;
+  document.getElementById('masterDownloadRow').style.display='none';
+  setStatus('masterStatus','masterProgress','masterStatusText','busy','Starting…');
+  const timer=stageTimer('masterStatusText',[
+    'Resampling to 44.1 kHz…','Applying EQ…','Restoring air above 16 kHz…',
+    'Spectral dehaze…','Mid-side processing…','De-essing…','Harmonic saturation…',
+    'Multiband compression…','Dynamic EQ…','Transient shaping…',
+    'Vocal ride…','Macro dynamics…','Normalising to −14 LUFS…',
+    'True-peak limiting…','Exporting…'
+  ],900);
+  const presenceGain   = parseFloat(document.getElementById('widthSlider').value);
+  const deessThreshold = parseFloat(document.getElementById('deessSlider').value);
+  const vocalBoostDb   = parseFloat(document.getElementById('vocalSlider').value);
+  const macroTargetDb  = parseFloat(document.getElementById('macroSlider').value);
+  // Expert params
+  const expertPanel = document.getElementById('expertPanel');
+  if (expertPanel.style.display !== 'none') {
+    form.append('eq_shelf_db',    document.getElementById('eqShelfSlider').value);
+    form.append('eq_mud_db',      document.getElementById('eqMudSlider').value);
+    form.append('air_blend',      document.getElementById('airBlendSlider').value);
+    form.append('dehaze_depth',   document.getElementById('dehazeSlider').value);
+    form.append('sat_drive_db',   document.getElementById('satDriveSlider').value);
+    form.append('sat_mix',        document.getElementById('satMixSlider').value);
+    form.append('comp_threshold', document.getElementById('compThreshSlider').value);
+    form.append('comp_ratio',     document.getElementById('compRatioSlider').value);
+    form.append('transient_boost',document.getElementById('transientSlider').value);
+    form.append('dyneq_max_cut',  document.getElementById('dyneqSlider').value);
+  }
+  showConsole(); startConsolePoll();
+  const form=new FormData();
+  form.append('file',            masterFileObj);
+  form.append('presence_gain',   presenceGain);
+  form.append('deess_threshold', deessThreshold);
+  form.append('vocal_boost_db',  vocalBoostDb);
+  form.append('macro_target_db', macroTargetDb);
+  try {
+    const res=await fetch(`${SERVER}/master`,{method:'POST',body:form}); clearInterval(timer);
+    if (!res.ok) throw new Error((await res.json()).error||`Error ${res.status}`);
+    const data=await res.json();
+    stopConsolePoll();
+    // Render QC result in checklist
+    if (data.qc) {
+      const qc = data.qc;
+      const passed = qc.passed;
+      const s = qc.stats || {};
+      const issues = qc.issues || [];
+      const warns  = qc.warnings || [];
+      // Update QC stage state
+      _stageState['qc'] = {
+        state: issues.length ? 'error' : 'done',
+        detail: issues.length
+          ? issues.join(' · ')
+          : warns.length
+            ? '⚠ ' + warns.join(' · ')
+            : `✓ No artifacts  ·  ${s.lufs} LUFS  ·  ${s.true_peak_db} dBTP`
+      };
+      _renderChecklist();
+      // Override status if QC failed
+      if (issues.length) {
+        setStatus('masterStatus','masterProgress','masterStatusText','error',
+          `⚠ Exported but QC found issues — check the log`);
+      } else {
+        setStatus('masterStatus','masterProgress','masterStatusText','success','✓ Mastered — QC passed');
+      }
+    } else {
+      setStatus('masterStatus','masterProgress','masterStatusText','success','✓ Mastered — ready to download');
+    }
+    document.getElementById('masterDownloadRow').style.display='flex';
+    document.getElementById('masterDownload').dataset.filename=data.output;
+    const dl=document.getElementById('masterDownload');
+    dl.onclick=()=>window.location.href=`${SERVER}/download?file=${encodeURIComponent(data.output)}`;
+    document.getElementById('masterReset').style.display='flex';
+    document.getElementById('masterBtn').disabled=false;  // re-enable for another run
+  } catch(err) { clearInterval(timer); stopConsolePoll(); setStatus('masterStatus','masterProgress','masterStatusText','error',`✗ ${err.message}`); document.getElementById('masterBtn').disabled=false; document.getElementById('masterReset').style.display='flex'; }
+});
+document.getElementById('masterReset').addEventListener('click', ()=>{
+  masterFileObj=null;
+  document.getElementById('masterFileName').textContent='';
+  document.getElementById('masterDrop').classList.remove('has-file');
+  document.getElementById('masterBtn').disabled=true;
+  document.getElementById('masterDownloadRow').style.display='none';
+  document.getElementById('masterReset').style.display='none';
+  document.getElementById('masterStatus').classList.remove('visible');
+});
+
+// ══════════════════════════════════════════════════════════
+//  SPLICE
+// ══════════════════════════════════════════════════════════
+const splWave=new WaveformEditor('spl',(inSec,outSec)=>{
+  document.getElementById('splIn').value=inSec.toFixed(2);
+  document.getElementById('splOut').value=outSec.toFixed(2);
+  checkSpliceReady();
+});
+function checkSpliceReady(){
+  const iv=parseFloat(document.getElementById('splIn').value);
+  const ov=parseFloat(document.getElementById('splOut').value);
+  document.getElementById('spliceBtn').disabled=!(splMasterFile&&splReplFile&&!isNaN(iv)&&!isNaN(ov)&&ov>iv);
+}
+initDrop('splMasterDrop','splMasterFile','splMasterName', f=>{ splMasterFile=f; setSharedFile(f); splWave.load(f); checkSpliceReady(); });
+initDrop('splReplDrop','splReplFile','splReplName',       f=>{ splReplFile=f;   checkSpliceReady(); });
+document.getElementById('splIn').addEventListener('input',  ()=>{ splWave.setFromInputs(parseFloat(document.getElementById('splIn').value),parseFloat(document.getElementById('splOut').value)); checkSpliceReady(); });
+document.getElementById('splOut').addEventListener('input', ()=>{ splWave.setFromInputs(parseFloat(document.getElementById('splIn').value),parseFloat(document.getElementById('splOut').value)); checkSpliceReady(); });
+document.getElementById('xfadeSlider').addEventListener('input', function(){ document.getElementById('xfadeVal').textContent=`${this.value} ms`; });
+document.getElementById('spliceBtn').addEventListener('click', async ()=>{
+  if (!splMasterFile||!splReplFile||!await checkServer()) return;
+  const inTime=parseFloat(document.getElementById('splIn').value);
+  const outTime=parseFloat(document.getElementById('splOut').value);
+  const crossfadeMs=parseFloat(document.getElementById('xfadeSlider').value);
+  document.getElementById('spliceBtn').disabled=true; document.getElementById('spliceDownloadRow').style.display='none';
+  setStatus('spliceStatus','spliceProgress','spliceStatusText','busy','Starting…');
+  const timer=stageTimer('spliceStatusText',['Resampling replacement…','Matching channels…','Snapping to zero-crossings…','Matching loudness…','Blending crossfades…','Exporting…'],700);
+  const form=new FormData(); form.append('master',splMasterFile); form.append('replacement',splReplFile); form.append('in_time',inTime); form.append('out_time',outTime); form.append('crossfade_ms',crossfadeMs);
+  try {
+    const res=await fetch(`${SERVER}/splice`,{method:'POST',body:form}); clearInterval(timer);
+    if (!res.ok) throw new Error((await res.json()).error||`Error ${res.status}`);
+    const data=await res.json();
+    setStatus('spliceStatus','spliceProgress','spliceStatusText','success','✓ Spliced — ready to download');
+    document.getElementById('spliceDownloadRow').style.display='flex'; document.getElementById('spliceDownload').dataset.filename=data.output; const dl=document.getElementById('spliceDownload'); dl.onclick=()=>window.location.href=`${SERVER}/download?file=${encodeURIComponent(data.output)}`;
+    document.getElementById('spliceReset').style.display='flex';
+  } catch(err){ clearInterval(timer); setStatus('spliceStatus','spliceProgress','spliceStatusText','error',`✗ ${err.message}`); document.getElementById('spliceBtn').disabled=false; document.getElementById('spliceReset').style.display='flex'; }
+});
+document.getElementById('spliceReset').addEventListener('click', ()=>{
+  splMasterFile=null; splReplFile=null;
+  ['splMasterName','splReplName'].forEach(id=>document.getElementById(id).textContent='');
+  ['splMasterDrop','splReplDrop'].forEach(id=>document.getElementById(id).classList.remove('has-file'));
+  document.getElementById('splIn').value=''; document.getElementById('splOut').value='';
+  splWave.reset(); document.getElementById('spliceBtn').disabled=true;
+  document.getElementById('spliceDownloadRow').style.display='none'; document.getElementById('spliceReset').style.display='none';
+  document.getElementById('spliceStatus').classList.remove('visible');
+});
+
+// ══════════════════════════════════════════════════════════
+//  HEAL
+// ══════════════════════════════════════════════════════════
+const healWave=new WaveformEditor('heal',(inSec,outSec)=>{
+  document.getElementById('healIn').value=inSec.toFixed(2);
+  document.getElementById('healOut').value=outSec.toFixed(2);
+  checkHealReady();
+});
+function checkHealReady(){
+  const iv=parseFloat(document.getElementById('healIn').value);
+  const ov=parseFloat(document.getElementById('healOut').value);
+  document.getElementById('healBtn').disabled=!(healFileObj&&!isNaN(iv)&&!isNaN(ov)&&ov>iv);
+}
+initDrop('healDrop','healFile','healFileName', file=>{
+  healFileObj=file; setSharedFile(file); healWave.load(file); checkHealReady();
+  document.getElementById('healDownloadRow').style.display='none';
+  document.getElementById('healReset').style.display='none';
+  document.getElementById('healStatus').classList.remove('visible');
+});
+document.getElementById('healIn').addEventListener('input',  ()=>{ healWave.setFromInputs(parseFloat(document.getElementById('healIn').value),parseFloat(document.getElementById('healOut').value)); checkHealReady(); });
+document.getElementById('healOut').addEventListener('input', ()=>{ healWave.setFromInputs(parseFloat(document.getElementById('healIn').value),parseFloat(document.getElementById('healOut').value)); checkHealReady(); });
+document.getElementById('blendSlider').addEventListener('input', function(){ document.getElementById('blendVal').textContent=`${this.value} ms`; });
+document.getElementById('healBtn').addEventListener('click', async ()=>{
+  if (!healFileObj||!await checkServer()) return;
+  const inTime=parseFloat(document.getElementById('healIn').value);
+  const outTime=parseFloat(document.getElementById('healOut').value);
+  const blendMs=parseFloat(document.getElementById('blendSlider').value);
+  document.getElementById('healBtn').disabled=true; document.getElementById('healDownloadRow').style.display='none';
+  setStatus('healStatus','healProgress','healStatusText','busy','Starting…');
+  const timer=stageTimer('healStatusText',['Snapping to zero-crossings…','Measuring section levels…','Applying level correction…','Smoothing gain ramps…','Blending spectrum at in-seam…','Blending spectrum at out-seam…','Exporting…'],700);
+  const form=new FormData(); form.append('file',healFileObj); form.append('in_time',inTime); form.append('out_time',outTime); form.append('blend_ms',blendMs);
+  try {
+    const res=await fetch(`${SERVER}/heal`,{method:'POST',body:form}); clearInterval(timer);
+    if (!res.ok) throw new Error((await res.json()).error||`Error ${res.status}`);
+    const data=await res.json();
+    setStatus('healStatus','healProgress','healStatusText','success','✓ Healed — ready to download');
+    document.getElementById('healDownloadRow').style.display='flex'; document.getElementById('healDownload').dataset.filename=data.output; const dl=document.getElementById('healDownload'); dl.onclick=()=>window.location.href=`${SERVER}/download?file=${encodeURIComponent(data.output)}`;
+    document.getElementById('healReset').style.display='flex';
+  } catch(err){ clearInterval(timer); setStatus('healStatus','healProgress','healStatusText','error',`✗ ${err.message}`); document.getElementById('healBtn').disabled=false; document.getElementById('healReset').style.display='flex'; }
+});
+document.getElementById('healReset').addEventListener('click', ()=>{
+  healFileObj=null;
+  document.getElementById('healFileName').textContent=''; document.getElementById('healDrop').classList.remove('has-file');
+  document.getElementById('healIn').value=''; document.getElementById('healOut').value='';
+  healWave.reset(); document.getElementById('healBtn').disabled=true;
+  document.getElementById('healDownloadRow').style.display='none'; document.getElementById('healReset').style.display='none';
+  document.getElementById('healStatus').classList.remove('visible');
+});
+// ══════════════════════════════════════════════════════════
+//  BRIDGE
+// ══════════════════════════════════════════════════════════
+const bridgeWave = new WaveformEditor('bridge', (inSec, outSec) => {
+  document.getElementById('bridgeStart').value = inSec.toFixed(2);
+  document.getElementById('bridgeEnd').value   = outSec.toFixed(2);
+  checkBridgeReady();
+});
+function checkBridgeReady() {
+  const sv = parseFloat(document.getElementById('bridgeStart').value);
+  const ev = parseFloat(document.getElementById('bridgeEnd').value);
+  document.getElementById('bridgeBtn').disabled = !(bridgeFileObj && !isNaN(sv) && !isNaN(ev) && ev > sv);
+}
+initDrop('bridgeDrop', 'bridgeFile', 'bridgeFileName', file => {
+  bridgeFileObj = file; setSharedFile(file); bridgeWave.load(file); checkBridgeReady();
+  document.getElementById('bridgeDownloadRow').style.display = 'none';
+  document.getElementById('bridgeReset').style.display    = 'none';
+  document.getElementById('bridgeStatus').classList.remove('visible');
+});
+document.getElementById('bridgeStart').addEventListener('input', () => { bridgeWave.setFromInputs(parseFloat(document.getElementById('bridgeStart').value), parseFloat(document.getElementById('bridgeEnd').value)); checkBridgeReady(); });
+document.getElementById('bridgeEnd').addEventListener('input',   () => { bridgeWave.setFromInputs(parseFloat(document.getElementById('bridgeStart').value), parseFloat(document.getElementById('bridgeEnd').value)); checkBridgeReady(); });
+
+document.getElementById('bridgeBtn').addEventListener('click', async () => {
+  if (!bridgeFileObj || !await checkServer()) return;
+  const startTime = parseFloat(document.getElementById('bridgeStart').value);
+  const endTime   = parseFloat(document.getElementById('bridgeEnd').value);
+  document.getElementById('bridgeBtn').disabled = true;
+  document.getElementById('bridgeDownloadRow').style.display = 'none';
+  setStatus('bridgeStatus', 'bridgeProgress', 'bridgeStatusText', 'busy', 'Starting…');
+  const timer = stageTimer('bridgeStatusText', [
+    'Measuring level before region…', 'Measuring level inside region…',
+    'Measuring level after region…',  'Building gain curve…',
+    'Smoothing automation…',          'Applying gain ride…', 'Exporting…'
+  ], 600);
+  const form = new FormData();
+  form.append('file',       bridgeFileObj);
+  form.append('start_time', startTime);
+  form.append('end_time',   endTime);
+  try {
+    const res  = await fetch(`${SERVER}/bridge`, { method: 'POST', body: form });
+    clearInterval(timer);
+    if (!res.ok) throw new Error((await res.json()).error || `Error ${res.status}`);
+    const data = await res.json();
+    setStatus('bridgeStatus', 'bridgeProgress', 'bridgeStatusText', 'success', '✓ Bridged — ready to download');
+    document.getElementById('bridgeDownloadRow').style.display = 'flex';
+    document.getElementById('bridgeDownload').dataset.filename = data.output;
+    const dl = document.getElementById('bridgeDownload');
+    dl.onclick = () => window.location.href = `${SERVER}/download?file=${encodeURIComponent(data.output)}`;
+    document.getElementById('bridgeReset').style.display = 'flex';
+  } catch (err) {
+    clearInterval(timer);
+    setStatus('bridgeStatus', 'bridgeProgress', 'bridgeStatusText', 'error', `✗ ${err.message}`);
+    document.getElementById('bridgeBtn').disabled = false;
+    document.getElementById('bridgeReset').style.display = 'flex';
+  }
+});
+
+document.getElementById('bridgeReset').addEventListener('click', () => {
+  bridgeFileObj = null;
+  document.getElementById('bridgeFileName').textContent = '';
+  document.getElementById('bridgeDrop').classList.remove('has-file');
+  document.getElementById('bridgeStart').value = '';
+  document.getElementById('bridgeEnd').value   = '';
+  bridgeWave.reset();
+  document.getElementById('bridgeBtn').disabled = true;
+  document.getElementById('bridgeDownloadRow').style.display = 'none';
+  document.getElementById('bridgeReset').style.display    = 'none';
+  document.getElementById('bridgeStatus').classList.remove('visible');
+});
+// ══════════════════════════════════════════════════════════
+//  DEJINX
+// ══════════════════════════════════════════════════════════
+
+document.getElementById('dejinxThresh').addEventListener('input', function() {
+  document.getElementById('dejinxThreshVal').textContent = `${this.value} dB`;
+});
+document.getElementById('dejinxDur').addEventListener('input', function() {
+  document.getElementById('dejinxDurVal').textContent = `${this.value} ms`;
+});
+
+initDrop('dejinxDrop', 'dejinxFile', 'dejinxFileName', file => {
+  dejinxFileObj = file; setSharedFile(file);
+  document.getElementById('dejinxBtn').disabled = false;
+  document.getElementById('dejinxDownloadRow').style.display = 'none';
+  document.getElementById('dejinxReset').style.display    = 'none';
+  document.getElementById('dejinxStatus').classList.remove('visible');
+});
+
+document.getElementById('dejinxBtn').addEventListener('click', async () => {
+  if (!dejinxFileObj || !await checkServer()) return;
+  const threshold = parseFloat(document.getElementById('dejinxThresh').value);
+  const maxDur    = parseFloat(document.getElementById('dejinxDur').value);
+  document.getElementById('dejinxBtn').disabled = true;
+  document.getElementById('dejinxDownloadRow').style.display = 'none';
+  setStatus('dejinxStatus', 'dejinxProgress', 'dejinxStatusText', 'busy', 'Starting…');
+  const timer = stageTimer('dejinxStatusText', [
+    'Building RMS envelope…',
+    'Calculating context levels…',
+    'Detecting dropout zones…',
+    'Repairing dropouts…',
+    'Smoothing gain curves…',
+    'Exporting…',
+  ], 800);
+  const form = new FormData();
+  form.append('file',      dejinxFileObj);
+  form.append('threshold', threshold);
+  form.append('max_dur',   maxDur);
+  try {
+    const res  = await fetch(`${SERVER}/dejinx`, { method: 'POST', body: form });
+    clearInterval(timer);
+    if (!res.ok) throw new Error((await res.json()).error || `Error ${res.status}`);
+    const data = await res.json();
+    const repairs = data.repairs || [];
+    const count   = repairs.length;
+
+    // Status summary
+    const statusMsg = count === 0
+      ? '✓ Scan complete — no dropouts found'
+      : `✓ Repaired ${count} dropout${count>1?'s':''}`;
+    setStatus('dejinxStatus', 'dejinxProgress', 'dejinxStatusText', 'success', statusMsg);
+
+    // Render repair list
+    const listEl = document.getElementById('dejinxRepairList');
+    if (repairs.length > 0) {
+      listEl.style.display = 'flex';
+      listEl.innerHTML = repairs.map((r, i) => `
+        <div style="display:grid;grid-template-columns:auto 1fr auto auto;gap:0 0.6rem;
+             align-items:center;padding:0.3rem 0.5rem;background:var(--surface2);
+             border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:0.7rem;">
+          <span style="color:var(--green);font-weight:600">#${i+1}</span>
+          <span style="color:var(--text)">at ${r.time_display}</span>
+          <span style="color:var(--muted)">${r.duration_ms} ms</span>
+          <span style="color:var(--warn)">−${r.drop_db} dB drop</span>
+        </div>`).join('');
+    } else {
+      listEl.style.display = 'none';
+    }
+
+    document.getElementById('dejinxDownloadRow').style.display = 'flex';
+    document.getElementById('dejinxDownload').dataset.filename = data.output;
+    const dl = document.getElementById('dejinxDownload');
+    dl.onclick = () => window.location.href = `${SERVER}/download?file=${encodeURIComponent(data.output)}`;
+    document.getElementById('dejinxReset').style.display = 'flex';
+  } catch (err) {
+    clearInterval(timer);
+    setStatus('dejinxStatus', 'dejinxProgress', 'dejinxStatusText', 'error', `✗ ${err.message}`);
+    document.getElementById('dejinxBtn').disabled = false;
+    document.getElementById('dejinxReset').style.display = 'flex';
+  }
+});
+
+document.getElementById('dejinxReset').addEventListener('click', () => {
+  dejinxFileObj = null;
+  document.getElementById('dejinxFileName').textContent = '';
+  document.getElementById('dejinxDrop').classList.remove('has-file');
+  document.getElementById('dejinxBtn').disabled = true;
+  document.getElementById('dejinxDownloadRow').style.display = 'none';
+  document.getElementById('dejinxReset').style.display    = 'none';
+  document.getElementById('dejinxStatus').classList.remove('visible');
+  document.getElementById('dejinxRepairList').style.display = 'none';
+  document.getElementById('dejinxRepairList').innerHTML = '';
+});
+// ══════════════════════════════════════════════════════════
+//  REF MATCH
+// ══════════════════════════════════════════════════════════
+
+function checkRefReady() {
+  document.getElementById('refmatchBtn').disabled = !(refTargetFile && refRefFile);
+}
+
+initDrop('refTargetDrop', 'refTargetFile', 'refTargetName', f => { refTargetFile = f; checkRefReady(); });
+initDrop('refRefDrop',    'refRefFile',    'refRefName',    f => { refRefFile    = f; checkRefReady(); });
+
+document.getElementById('refmatchBtn').addEventListener('click', async () => {
+  if (!refTargetFile || !refRefFile || !await checkServer()) return;
+  document.getElementById('refmatchBtn').disabled = true;
+  document.getElementById('refmatchDownloadRow').style.display = 'none';
+  setStatus('refmatchStatus','refmatchProgress','refmatchStatusText','busy','Starting…');
+  const timer = stageTimer('refmatchStatusText',[
+    'Analysing target spectrum…','Analysing reference spectrum…',
+    'Computing frequency curve…','Matching RMS levels…',
+    'Matching stereo width…','Applying corrections…','Exporting…'
+  ], 800);
+  const form = new FormData();
+  form.append('target',    refTargetFile);
+  form.append('reference', refRefFile);
+  try {
+    const res  = await fetch(`${SERVER}/refmatch`, { method:'POST', body:form });
+    clearInterval(timer);
+    if (!res.ok) throw new Error((await res.json()).error || `Error ${res.status}`);
+    const data = await res.json();
+    setStatus('refmatchStatus','refmatchProgress','refmatchStatusText','success','✓ Matched — ready to download');
+    document.getElementById('refmatchDownloadRow').style.display = 'flex';
+    document.getElementById('refmatchDownload').dataset.filename = data.output;
+    const dl = document.getElementById('refmatchDownload');
+    dl.onclick = () => window.location.href = `${SERVER}/download?file=${encodeURIComponent(data.output)}`;
+    document.getElementById('refmatchReset').style.display = 'flex';
+  } catch(err) {
+    clearInterval(timer);
+    setStatus('refmatchStatus','refmatchProgress','refmatchStatusText','error',`✗ ${err.message}`);
+    document.getElementById('refmatchBtn').disabled = false;
+    document.getElementById('refmatchReset').style.display = 'flex';
+  }
+});
+
+document.getElementById('refmatchReset').addEventListener('click', () => {
+  refTargetFile = null; refRefFile = null;
+  ['refTargetName','refRefName'].forEach(id => document.getElementById(id).textContent='');
+  ['refTargetDrop','refRefDrop'].forEach(id => document.getElementById(id).classList.remove('has-file'));
+  document.getElementById('refmatchBtn').disabled = true;
+  document.getElementById('refmatchDownloadRow').style.display = 'none';
+  document.getElementById('refmatchReset').style.display = 'none';
+  document.getElementById('refmatchStatus').classList.remove('visible');
+});
+// ══════════════════════════════════════════════════════════
+//  CONSOLE PANEL — checklist renderer
+// ══════════════════════════════════════════════════════════
+let _consolePoll = null;
+
+// Ordered stage definitions — each entry maps console output patterns
+// to a human-readable label and optional detail extractor
+const STAGES = [
+  { id:'resample',   label:'Resample to 44.1 kHz',
+    match: l => l.includes('Resample :'),
+    detail: l => l.match(/(\d+) Hz → (\d+) Hz/) ? `${l.match(/(\d+) Hz → (\d+) Hz/)[1]} Hz → 44,100 Hz` : null },
+  { id:'eq',         label:'EQ compensation',
+    match: l => l.includes('EQ       :'),
+    detail: l => '+1.5 dB air shelf  ·  −2.0 dB mud cut @ 380 Hz' },
+  { id:'air',        label:'Air restoration (16 kHz+)',
+    match: l => l.includes('Air restore:'),
+    detail: l => { const m=l.match(/level ([\-\d.]+) dBFS/); return m ? `Noise floor ${m[1]} dBFS above 16 kHz` : null; } },
+  { id:'dehaze',     label:'Spectral dehaze (8–16 kHz)',
+    match: l => l.includes('Spectral dehaze:'),
+    detail: l => '±4% AM modulation — breaks up diffusion flatness' },
+  { id:'ms',         label:'M/S stereo processing',
+    match: l => l.includes('M/S proc :'),
+    detail: l => { const m=l.match(/presence \+([\d.]+) dB/); return m ? `Bass anchored to centre  ·  presence +${m[1]} dB side` : 'Bass anchored to centre only'; } },
+  { id:'deess',      label:'De-esser',
+    match: l => l.includes('De-esser'),
+    detail: l => l.includes('bypassed') ? 'Off — bypassed' : (() => { const m=l.match(/active ([\d.]+)%.*avg ([\-\d.]+) dB/); return m ? `Active ${m[1]}% of track  ·  avg ${m[2]} dB` : null; })() },
+  { id:'sat',        label:'Harmonic saturation',
+    match: l => l.includes('Saturate :'),
+    detail: l => { const m=l.match(/mix (\d+)%.*~([\d.]+)%/); return m ? `${m[1]}% wet parallel tanh  ·  ~${m[2]}% harmonic content` : null; } },
+  { id:'compress',   label:'Glue compression',
+    match: l => l.includes('Compress'),
+    detail: l => { const m=l.match(/([\-\d.]+) dB gain change/); return m ? `2:1 mid-channel  ·  ${m[1]} dB gain change` : '2:1 mid-channel'; } },
+  { id:'dyneq',      label:'Dynamic EQ (2–4 kHz)',
+    match: l => l.includes('Dynamic EQ'),
+    detail: l => { const m=l.match(/active (\d+)%/); return m && m[1]==='0' ? 'No harshness detected — inactive' : m ? `Active ${m[1]}% of track` : null; } },
+  { id:'transient',  label:'Transient shaping',
+    match: l => l.includes('Transient  :'),
+    detail: l => { const m=l.match(/(\d+) onsets.*\+([\d.]+) dB/); return m ? `${m[1]} onsets detected  ·  +${m[2]} dB attack boost` : null; } },
+  { id:'vocal',      label:'Vocal ride',
+    match: l => l.includes('Vocal ride'),
+    detail: l => l.includes('bypassed') ? 'Off — bypassed' : (() => { const m=l.match(/boosting ([\d.]+)%.*avg \+([\d.]+) dB/); return m ? `Active ${m[1]}% of track  ·  avg +${m[2]} dB lift` : null; })() },
+  { id:'macro',      label:'Macro dynamics',
+    match: l => l.includes('Macro dyn:'),
+    detail: l => {
+      if (l.includes('bypassed')) return 'Off — natural dynamics preserved';
+      if (l.includes('flat')) return 'Track already flat — skipped';
+      const m=l.match(/contrast ([\d.]+) → ([\d.]+) dB.*stretch ([\d.]+)×/);
+      return m ? `Natural contrast ${m[1]} dB → target ${m[2]} dB  ·  stretch ${m[3]}×` : null;
+    } },
+  { id:'loudness',   label:'Loudness normalisation',
+    match: l => l.includes('output') && l.includes('LUFS') && l.includes('gain'),
+    detail: l => { const m=l.match(/([\-\d.]+) LUFS.*gain ([\+\-\d.]+) dB/); return m ? `${m[1]} LUFS  ·  gain ${m[2]} dB` : null; } },
+  { id:'truepeak',   label:'True peak limiting',
+    match: l => l.includes('True peak:'),
+    detail: l => { const m=l.match(/([\+\-\d.]+) dBTP/); return m ? `Peak ${m[1]} dBTP → ceiling −1.0 dBTP` : null; } },
+  { id:'export',     label:'Export 44.1 kHz / 16-bit WAV',
+    match: l => l.includes('Export   :'),
+    detail: l => { const m=l.match(/\((\d+) KB/); return m ? `${(parseInt(m[1])/1024).toFixed(1)} MB` : null; } },
+  { id:'qc',         label:'Quality control check',
+    match: l => false,
+    detail: l => null },
+];
+
+// State: which stages are done, active, pending
+let _stageState = {};  // id → {state:'pending'|'active'|'done', detail:string|null}
+let _isDone = false;
+let _lufsIn = null, _lufsOut = null;
+
+function showConsole() {
+  const sidebar = document.getElementById('consoleSidebar');
+  sidebar.classList.add('visible');
+  // Reset all stages to pending
+  _stageState = {};
+  _isDone = false; _lufsIn = null; _lufsOut = null;
+  STAGES.forEach(s => _stageState[s.id] = {state:'pending', detail:null});
+  _renderChecklist();
+}
+
+function _renderChecklist() {
+  const body = document.getElementById('consoleBody');
+  const icons = {pending:'○', active:'◉', done:'✓', error:'✗'};
+  let html = STAGES.map(s => {
+    const st  = _stageState[s.id] || {state:'pending', detail:null};
+    const ico = icons[st.state] || '○';
+    const lbl = st.state === 'pending'
+      ? `<span class="cl-label muted">${s.label}</span>`
+      : `<span class="cl-label">${s.label}</span>`;
+    const det = st.detail
+      ? `<span class="cl-detail${st.state==='done'?' green':''}">${st.detail}</span>`
+      : '';
+    return `<div class="cl-item">
+      <span class="cl-icon ${st.state}">${ico}</span>
+      <div class="cl-body">${lbl}${det}</div>
+    </div>`;
+  }).join('');
+
+  if (_isDone && _lufsOut) {
+    html += `<div class="cl-summary">✓ Done  ·  ${_lufsOut} LUFS  ·  −1.0 dBTP  ·  44.1 kHz / 16-bit</div>`;
+  }
+
+  body.innerHTML = html;
+  body.scrollTop = body.scrollHeight;
+}
+
+function _processLines(lines) {
+  lines.forEach(line => {
+    // Check each stage pattern
+    STAGES.forEach(s => {
+      if (s.match(line)) {
+        const detail = s.detail ? s.detail(line) : null;
+        _stageState[s.id] = {state:'done', detail};
+        // Mark next pending stage as active
+        let foundDone = false;
+        for (let i = 0; i < STAGES.length; i++) {
+          if (STAGES[i].id === s.id) { foundDone = true; continue; }
+          if (foundDone && _stageState[STAGES[i].id].state === 'pending') {
+            _stageState[STAGES[i].id] = {state:'active', detail:null};
+            break;
+          }
+        }
+      }
+    });
+    // Detect LUFS values for summary
+    if (line.includes('Input LUFS')) {
+      const m = line.match(/([\-\d.]+) LUFS/);
+      if (m) _lufsIn = m[1];
+    }
+    if (line.includes('Output LUFS')) {
+      const m = line.match(/([\-\d.]+) LUFS/);
+      if (m) _lufsOut = m[1];
+    }
+    if (line.includes('✓ Done')) _isDone = true;
+  });
+
+  // Mark first pending as active if nothing is active yet
+  const hasActive = Object.values(_stageState).some(s => s.state === 'active');
+  if (!hasActive && !_isDone) {
+    for (const s of STAGES) {
+      if (_stageState[s.id].state === 'pending') {
+        _stageState[s.id].state = 'active';
+        break;
+      }
+    }
+  }
+
+  _renderChecklist();
+}
+
+async function pollConsole() {
+  try {
+    const r = await fetch(`${SERVER}/log`);
+    if (r.ok) {
+      const d = await r.json();
+      if (d.lines && d.lines.length) _processLines(d.lines);
+    }
+  } catch(_) {}
+}
+
+function startConsolePoll() {
+  if (_consolePoll) clearInterval(_consolePoll);
+  _consolePoll = setInterval(pollConsole, 600);
+}
+
+function stopConsolePoll() {
+  if (_consolePoll) { clearInterval(_consolePoll); _consolePoll = null; }
+  pollConsole();
+}
+
+
+</script>
+</body>
+</html>

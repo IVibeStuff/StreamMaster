@@ -16,7 +16,7 @@ Runs entirely on your machine — no audio leaves your computer.
 ## Tools
 
 ### 🎛 Master
-Full mastering chain for Spotify upload:
+Full mastering chain for upload to Spotify, Youtube and other platforms:
 - EQ: high-shelf air boost, low-mid mud cut
 - **Mid-side processing**: bass anchored to mid (mono-safe), presence widened in side channel
 - **Harmonic saturation**: gentle parallel tanh for warmth

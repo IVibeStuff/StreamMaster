@@ -1,7 +1,0 @@
-flask
-flask-cors
-pyloudnorm
-soundfile
-scipy
-numpy
-matchering

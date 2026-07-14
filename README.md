@@ -1,4 +1,4 @@
-# Spotify Master Tool
+# Streaming Master Tool
 
 A local audio toolkit for mastering and repairing AI-generated music.
 Runs entirely on your machine — no audio leaves your computer.

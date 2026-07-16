@@ -9,17 +9,15 @@ Processing chain:
   4.  Air restoration       — synthesise noise floor above 16 kHz (Suno fix)
   5.  Spectral dehaze       — break up diffusion-model 8–16 kHz flatness
   6.  Mid-side processing   — bass anchoring + presence widening
-  7.  De-essing             — adaptive mid-channel sibilance control
-  8.  Harmonic saturation   — parallel tanh warmth
-  9.  Glue compression      — mid-channel RMS compression
-  10. Dynamic EQ            — threshold-driven presence cut (2–4 kHz)
-  11. Transient shaping     — restore Suno-flattened attack transients
-  12. Vocal ride            — restore vocals buried later in the track
-  13. Macro-dynamic contrast — section-aware loudness shaping
-  14. Stereo safety check
-  15. Loudness normalisation — −14 LUFS (Spotify target)
-  16. True-peak limiting    — −1 dBTP ceiling
-  17. Export 44.1 kHz / 16-bit WAV
+  7.  Harmonic saturation   — parallel tanh warmth
+  8.  Multiband compression — 3-band (sub / mid / air)
+  9.  Dynamic EQ            — threshold-driven presence cut (2–4 kHz)
+  10. Transient shaping     — restore Suno-flattened attack transients
+  11. Macro-dynamic contrast — section-aware loudness shaping
+  12. Stereo safety check
+  13. Loudness normalisation — −14 LUFS (Spotify target)
+  14. True-peak limiting    — −1 dBTP ceiling
+  15. Export 44.1 kHz / 16-bit WAV
 
 Usage:
     python spotify_master.py input.wav [output.wav]
@@ -61,6 +59,9 @@ LOW_MID_Q        =   0.9
 # Compressor
 COMP_THRESHOLD   = -18.0
 COMP_RATIO       =   2.0
+COMP_ATTACK_MS   =  30.0
+COMP_RELEASE_MS  = 200.0
+COMP_MAKEUP_DB   =   1.0
 
 # M/S processing
 MS_BASS_FREQ     =   120   # Hz — anchor bass to mid below this
@@ -202,6 +203,63 @@ def apply_saturation(audio, drive_db=SAT_DRIVE_DB, mix=SAT_MIX):
     return result
 
 
+# ── Step 6 — Light compression ───────────────────────────────────────────────
+
+def apply_compression(audio, sr):
+    """
+    Feed-forward RMS compressor — fully vectorised.
+    Uses numpy cumsum trick for the IIR envelope follower so there are
+    zero Python loops regardless of track length.
+    """
+    print(f"  Compress : {COMP_THRESHOLD} dBRMS threshold  "
+          f"{COMP_RATIO}:1  "
+          f"attack {COMP_ATTACK_MS} ms  release {COMP_RELEASE_MS} ms")
+
+    thresh_lin = db_to_linear(COMP_THRESHOLD)
+    makeup     = db_to_linear(COMP_MAKEUP_DB)
+    n          = len(audio)
+
+    # Squared mono signal as the detector input
+    mono_sq = audio.mean(axis=1) ** 2
+
+    # Hop-based RMS — 10ms hops for speed
+    hop     = max(1, int(0.01 * sr))
+    n_hops  = (n + hop - 1) // hop
+    # Pad and reshape for fast block RMS
+    padded  = np.pad(mono_sq, (0, n_hops * hop - n))
+    rms_env = np.sqrt(np.mean(padded.reshape(n_hops, hop), axis=1) + 1e-24)
+
+    # Ballistic smoothing: approximate the IIR with a forward pass using
+    # scipy's lfilter which is implemented in C — no Python loop
+    a_att = np.exp(-1.0 / max(1, (COMP_ATTACK_MS  * 1e-3 * sr) / hop))
+    a_rel = np.exp(-1.0 / max(1, (COMP_RELEASE_MS * 1e-3 * sr) / hop))
+
+    # Two-pass: attack pass then release pass (classic peak follower in C via lfilter)
+    # Attack: smooth upward movements
+    b_att = [1.0 - a_att]; a_coef_att = [1.0, -a_att]
+    env_att = signal.lfilter(b_att, a_coef_att, rms_env)
+    # Release: smooth downward movements on the attack-smoothed signal
+    b_rel = [1.0 - a_rel]; a_coef_rel = [1.0, -a_rel]
+    env_rel = signal.lfilter(b_rel, a_coef_rel, env_att)
+    smoothed = np.maximum(env_att, env_rel)  # take the slower of the two
+
+    # Gain computer (vectorised)
+    gain_hops = np.where(
+        smoothed > thresh_lin,
+        (thresh_lin * (smoothed / (thresh_lin + 1e-24)) ** (1.0 / COMP_RATIO))
+        / (smoothed + 1e-24) * makeup,
+        makeup
+    )
+
+    # Smooth gain at hop level (fast — only n_hops values), then upsample
+    gain_hops_smooth = gaussian_filter1d(gain_hops, sigma=3)
+    # Upsample hop gains to sample resolution via linear interpolation
+    hop_centres  = np.arange(n_hops) * hop + hop // 2
+    gain_samples = np.interp(np.arange(n), hop_centres, gain_hops_smooth)
+
+    return audio * gain_samples[:, np.newaxis]
+
+
 # ── Step 7 — Macro-Dynamic Contrast ──────────────────────────────────────────
 
 def apply_macro_dynamics(audio, sr, target_db=MACRO_TARGET_DB):
@@ -234,10 +292,6 @@ def apply_macro_dynamics(audio, sr, target_db=MACRO_TARGET_DB):
         return audio
 
     stretch = min(target_db / contrast, 1.8)
-    if stretch <= 1.0:
-        print(f"  Macro dyn: contrast {contrast:.1f} dB already at/above "
-              f"target {target_db:.1f} dB — skipping")
-        return audio
     mean    = smooth.mean()
 
     # Gain computed and smoothed at frame level — fast
@@ -282,7 +336,7 @@ def check_stereo(audio):
 
 # ── Step 9 — Loudness normalisation ──────────────────────────────────────────
 
-def normalise_loudness(audio, sr):
+def normalise_loudness(audio, sr, target_lufs=TARGET_LUFS):
     meter   = pyln.Meter(sr)
     lufs_in = meter.integrated_loudness(audio)
     print(f"  Loudness : input  {lufs_str(lufs_in)}")
@@ -291,7 +345,7 @@ def normalise_loudness(audio, sr):
         print("           : WARNING — silence? skipping gain")
         return audio, lufs_in, lufs_in
 
-    gain_db  = TARGET_LUFS - lufs_in
+    gain_db  = target_lufs - lufs_in
     audio    = audio * db_to_linear(gain_db)
     lufs_out = meter.integrated_loudness(audio)
     print(f"           : output {lufs_str(lufs_out)}  (gain {gain_db:+.2f} dB)")
@@ -300,14 +354,14 @@ def normalise_loudness(audio, sr):
 
 # ── Step 10 — True-peak limiting ─────────────────────────────────────────────
 
-def true_peak_limit(audio, sr):
+def true_peak_limit(audio, sr, ceiling_db=TRUE_PEAK_DBTP):
     """
     True-peak detection via chunked 4× oversampling.
     Processes in 1-second chunks to avoid allocating a massive upsampled buffer,
     then applies a single scalar gain reduction if needed — no second upsample pass.
     """
     OVERSAMPLE  = 4
-    ceiling_lin = db_to_linear(TRUE_PEAK_DBTP)
+    ceiling_lin = db_to_linear(ceiling_db)
 
     # Find true peak by upsampling chunks and tracking the max
     chunk_size = sr  # 1 second at a time
@@ -321,14 +375,14 @@ def true_peak_limit(audio, sr):
         peak  = max(peak, np.max(np.abs(up)))
 
     peak_dbtp = linear_to_db(peak)
-    print(f"  True peak: {peak_dbtp:+.2f} dBTP → ceiling {TRUE_PEAK_DBTP} dBTP")
+    print(f"  True peak: {peak_dbtp:+.2f} dBTP → ceiling {ceiling_db} dBTP")
 
     if peak > ceiling_lin:
         # Simple scalar reduction — no need to re-upsample the whole track
         reduction = ceiling_lin / peak
         audio     = audio * reduction
         print(f"           : reduced {linear_to_db(reduction):+.2f} dB  "
-              f"(peak now ~{TRUE_PEAK_DBTP:.1f} dBTP)")
+              f"(peak now ~{ceiling_db:.1f} dBTP)")
     else:
         print("           : within ceiling — no limiting needed")
 
@@ -366,6 +420,7 @@ def master(input_path, output_path=None,
            transient_boost =  2.5,   # dB boost on attack transients (0 = off)
            dyneq_threshold = -24.0,  # dynamic EQ threshold relative to band median
            dyneq_max_cut   =  3.0,   # max dB cut from dynamic EQ
+           profile         = 'streaming',  # 'streaming' or 'local'
            ):
     if output_path is None:
         p = Path(input_path)
@@ -393,8 +448,24 @@ def master(input_path, output_path=None,
     audio = vocal_ride(audio, sr, max_boost_db=vocal_boost_db)
     audio = apply_macro_dynamics(audio, sr, target_db=macro_target_db)
     audio = check_stereo(audio)
-    audio, lufs_in, lufs_out = normalise_loudness(audio, sr)
-    audio = true_peak_limit(audio, sr)
+
+    # ── Profile-specific adjustments ─────────────────────────────────────────
+    if profile == 'local':
+        # Gentle high-shelf cut to simulate platform encoding warmth
+        b, a = _high_shelf_coeffs(10_000, -1.5, sr)
+        audio = signal.sosfilt(signal.tf2sos(b, a), audio, axis=0)
+        # Slightly warmer saturation
+        audio = apply_saturation(audio, drive_db=sat_drive_db, mix=max(0, sat_mix - 0.05))
+        target_lufs = -16.0
+        peak_ceiling = -2.0
+        print(f"  Profile    : Local listening  (−16 LUFS · −2 dBTP · −1.5 dB air shelf)")
+    else:
+        target_lufs = TARGET_LUFS
+        peak_ceiling = TRUE_PEAK_DBTP
+        print(f"  Profile    : Streaming  (−14 LUFS · −1 dBTP)")
+
+    audio, lufs_in, lufs_out = normalise_loudness(audio, sr, target_lufs=target_lufs)
+    audio = true_peak_limit(audio, sr, ceiling_db=peak_ceiling)
     export(audio, sr, output_path)
 
     print("\n✓ Done")

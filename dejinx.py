@@ -18,9 +18,9 @@ This tool:
 Usage (CLI):
     python dejinx.py track.wav [--output out.wav] [--threshold 6] [--max-dur 300]
 
-    --threshold : dB drop below context that triggers a fix (default 10)
+    --threshold : dB drop below context that triggers a fix (default 6)
     --max-dur   : maximum dropout duration in ms to fix (default 300)
-    --min-dur   : minimum dropout duration in ms to fix (default 80)
+    --min-dur   : minimum dropout duration in ms to fix (default 20)
     --output    : output path (default: track_dejinxed.wav)
 """
 
@@ -257,8 +257,8 @@ def main():
     p = argparse.ArgumentParser(description="Auto-repair micro-dropout artefacts.")
     p.add_argument("input")
     p.add_argument("--output",    default=None)
-    p.add_argument("--threshold", type=float, default=10.0)
-    p.add_argument("--min-dur",   type=float, default=80.0)
+    p.add_argument("--threshold", type=float, default=6.0)
+    p.add_argument("--min-dur",   type=float, default=20.0)
     p.add_argument("--max-dur",   type=float, default=300.0)
     args = p.parse_args()
     dejinx(args.input, args.output, args.threshold, args.min_dur, args.max_dur)

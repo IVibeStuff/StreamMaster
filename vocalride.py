@@ -256,7 +256,7 @@ def process(input_path: str, output_path: str | None = None,
 
     if output_path is None:
         p = Path(input_path)
-        output_path = str(p.parent / (p.stem + "_vocalride.wav"))
+        output_path = str(p.parent / (p.stem + "_vocalrode.wav"))
 
     print("\n╔══════════════════════════════════════════════════════╗")
     print("║              Vocal Ride                              ║")

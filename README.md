@@ -1,4 +1,4 @@
-# Streaming Master Tool
+# Spotify Master Tool
 
 A local audio toolkit for mastering and repairing AI-generated music.
 Runs entirely on your machine — no audio leaves your computer.
@@ -16,7 +16,7 @@ Runs entirely on your machine — no audio leaves your computer.
 ## Tools
 
 ### 🎛 Master
-Full mastering chain for upload to Spotify, Youtube and other platforms:
+Full mastering chain for Spotify upload:
 - EQ: high-shelf air boost, low-mid mud cut
 - **Mid-side processing**: bass anchored to mid (mono-safe), presence widened in side channel
 - **Harmonic saturation**: gentle parallel tanh for warmth
@@ -67,7 +67,7 @@ Auto-detect and repair Suno synthesis dropouts across the full track.
 - Python 3.10+ (https://www.python.org)
 - Internet on first run (package install)
 
-Packages: `flask flask-cors pyloudnorm soundfile scipy numpy matchering`
+Packages: `flask flask-cors pyloudnorm soundfile scipy numpy`
 
 ---
 
@@ -76,7 +76,7 @@ Packages: `flask flask-cors pyloudnorm soundfile scipy numpy matchering`
 ### Mastering chain additions (in processing order)
 - **Air restoration** — synthesises a shaped noise floor above 16 kHz to replace Suno's hard spectral cutoff (Suno generates at 32 kHz internally)
 - **Spectral dehaze** — breaks up the uniform 8–16 kHz energy distribution produced by diffusion models using subtle amplitude modulation
-- **Glue compression** — gentle RMS compression on the mid channel only (stereo width untouched)
+- **Multiband compression** — 3-band compressor (sub <200 Hz / mid 200–8 kHz / air >8 kHz) for frequency-selective dynamic control
 - **Dynamic EQ** — threshold-driven cut in 2–4 kHz only when harshness exceeds the band's own average level
 - **Transient shaping** — detects and restores attack transients flattened by Suno's internal compression
 

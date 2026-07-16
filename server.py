@@ -81,12 +81,13 @@ def master_route():
     deess_slider    = float(request.form.get("deess_threshold",  -2.0))
     vocal_boost_db  = float(request.form.get("vocal_boost_db",   0.0))
     macro_target_db = float(request.form.get("macro_target_db",  3.5))
+    profile         = request.form.get("profile", "streaming")  # 'streaming' or 'local'
 
     # De-esser inversion: slider -2=Off, 0-7=aggressiveness → threshold_db
     if deess_slider <= -1.5:
         deess_threshold = -2.0
     else:
-        deess_threshold = 8.0 * (1.0 - deess_slider / 7.0)
+        deess_threshold = 8.0 - deess_slider
 
     # Expert params (sent only when expert panel is unlocked)
     eq_shelf_db    = float(request.form.get("eq_shelf_db",     1.5))
@@ -102,11 +103,13 @@ def master_route():
     dyneq_max_cut  = float(request.form.get("dyneq_max_cut",   3.0))
 
     gain_db      = round(20 * np.log10(presence_gain + 1), 1)
+    profile_tag  = '_local' if profile == 'local' else '_streaming'
     output_name  = (f"{original_stem}_remaster"
                     f"_w{gain_db}dB"
                     f"_d{int(deess_slider)}"
                     f"_v{vocal_boost_db:.0f}"
-                    f"_m{macro_target_db:.1f}.wav")
+                    f"_m{macro_target_db:.1f}"
+                    f"{profile_tag}.wav")
 
     input_path  = UPLOAD_DIR / "input.wav"
     output_path = UPLOAD_DIR / output_name
@@ -128,7 +131,8 @@ def master_route():
                comp_ratio=comp_ratio,
                transient_boost=transient_boost,
                dyneq_threshold=dyneq_threshold,
-               dyneq_max_cut=dyneq_max_cut)
+               dyneq_max_cut=dyneq_max_cut,
+               profile=profile)
         qc = qc_check(str(output_path))
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -32,8 +32,6 @@ python -c "import scipy" >nul 2>&1
 if errorlevel 1 goto install
 python -c "import numpy" >nul 2>&1
 if errorlevel 1 goto install
-python -c "import matchering" >nul 2>&1
-if errorlevel 1 goto install
 goto launch
 
 :install

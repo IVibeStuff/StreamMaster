@@ -175,27 +175,54 @@ def vocal_ride(
     smooth_sigma = int(SMOOTH_S)   # sigma in hop units (1s hops → sigma in seconds)
     vox_smooth   = gaussian_filter1d(vox_db, sigma=smooth_sigma)
 
-    # ── C. Reference level — median of first 40% ──────────────────────────────
-    ref_hops = max(1, int(n_hops * REFERENCE_PCT))
-    ref_db   = float(np.median(vox_smooth[:ref_hops]))
-    print(f"             reference level {ref_db:.1f} dBRMS  "
-          f"(median of first {REFERENCE_PCT*100:.0f}%)")
+    # ── C. Adaptive reference level ───────────────────────────────────────────
+    # The old approach used a fixed median of the first 40% as the target.
+    # This caused the rider to fight natural gradual fades, pushing the second
+    # half of the track unnaturally loud.
+    #
+    # The new approach uses a slow-tracking reference that follows the macro
+    # trend of the vocal level over a long window (default 30s). This means:
+    #   - Gradual fades are tracked and left alone (reference follows them)
+    #   - Sudden drops within a section are still caught and lifted
+    #   - The rider only corrects short-term buried-vocal events, not long arcs
+    #
+    # Implementation: at each hop, the reference is the median of a ±15s
+    # context window around that hop. Gaussian-smoothed to avoid step edges.
+
+    track_duration_s = n / sr
+    ctx_s  = min(30.0, track_duration_s * 0.35)   # context window: 30s or 35% of track
+    ctx_hops = max(3, int(ctx_s / 1.0))            # in hop units (1s hops)
+
+    # Build adaptive reference: running median over a wide context window
+    adaptive_ref = np.zeros(n_hops)
+    for i in range(n_hops):
+        lo = max(0, i - ctx_hops)
+        hi = min(n_hops, i + ctx_hops + 1)
+        adaptive_ref[i] = np.median(vox_smooth[lo:hi])
+
+    # Smooth the adaptive reference to avoid sudden jumps
+    adaptive_ref = gaussian_filter1d(adaptive_ref, sigma=ctx_hops // 2)
+
+    ref_db = adaptive_ref  # now an array, not a scalar
+
+    print(f"             adaptive reference  "
+          f"range [{ref_db.min():.1f}, {ref_db.max():.1f}] dBRMS  "
+          f"context ±{ctx_s:.0f}s")
 
     # ── D. Gain curve ─────────────────────────────────────────────────────────
-    # How much do we need to add at each hop to reach ref_db?
     raw_gain_db = ref_db - vox_smooth   # positive = boost needed
 
-    # Gate: if vocal is more than gate_db below ref, it's probably a
-    # genuine instrumental section — don't boost (would lift noise / reverb)
+    # Gate: if vocal is more than gate_db below adaptive ref, it's a genuine
+    # instrumental or silent section — don't boost
     gate_mask      = vox_smooth < (ref_db - gate_db)
     raw_gain_db[gate_mask] = 0.0
 
     # Cap boost
     raw_gain_db = np.clip(raw_gain_db, 0.0, max_boost_db)
 
-    # Only apply to second half of track (don't alter the reference section)
-    first_half_hops = ref_hops
-    raw_gain_db[:first_half_hops] *= np.linspace(0, 1, first_half_hops)
+    # Fade in gently over first 5s to avoid abrupt start
+    fade_hops = min(n_hops, 5)
+    raw_gain_db[:fade_hops] *= np.linspace(0, 1, fade_hops)
 
     # Apply ballistic smoothing at hop level
     gain_lin_hops = _smooth_db_to_gain(raw_gain_db, sr, hop)
@@ -220,9 +247,15 @@ def vocal_ride(
         sub_db   = _hop_env_db(sub_mid, hop, sr)
         sub_smooth = gaussian_filter1d(sub_db, sigma=smooth_sigma)
 
-        # Reference sub level from first 40%
-        sub_ref_db = float(np.median(sub_smooth[:ref_hops]))
-        sub_excess = sub_smooth - sub_ref_db - SUB_MASK_THRESH
+        # Adaptive sub reference — same context window approach
+        sub_adaptive_ref = np.zeros(n_hops)
+        for i in range(n_hops):
+            lo = max(0, i - ctx_hops)
+            hi = min(n_hops, i + ctx_hops + 1)
+            sub_adaptive_ref[i] = np.median(sub_smooth[lo:hi])
+        sub_adaptive_ref = gaussian_filter1d(sub_adaptive_ref, sigma=ctx_hops // 2)
+
+        sub_excess = sub_smooth - sub_adaptive_ref - SUB_MASK_THRESH
         sub_excess = np.clip(sub_excess, 0.0, SUB_MASK_MAX_DB)
 
         # Only attenuate when sub is rising AND vocal needs boosting

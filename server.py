@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-server.py — Local bridge server for the Spotify Mastering UI.
+server.py — Local bridge server for the StreamMaster UI.
 
 Run once:  python server.py
 Browser opens automatically at http://localhost:5051
@@ -27,6 +27,7 @@ from dejinx import dejinx
 from mastering_extras import reference_match
 from analyser import analyse
 from qc import qc_check
+from repair import repair_boundaries, find_corruption_zones, _demucs_available
 
 app = Flask(__name__)
 CORS(app)
@@ -80,7 +81,7 @@ def master_route():
     presence_gain   = float(request.form.get("presence_gain",    0.25))
     deess_slider    = float(request.form.get("deess_threshold",  -2.0))
     vocal_boost_db  = float(request.form.get("vocal_boost_db",   0.0))
-    macro_target_db = float(request.form.get("macro_target_db",  3.5))
+    macro_target_db = float(request.form.get("macro_target_db",  0.0))
     profile         = request.form.get("profile", "streaming")  # 'streaming' or 'local'
 
     # De-esser inversion: slider -2=Off, 0-7=aggressiveness → threshold_db
@@ -101,6 +102,8 @@ def master_route():
     transient_boost= float(request.form.get("transient_boost", 2.5))
     dyneq_threshold= float(request.form.get("dyneq_threshold",-24.0))
     dyneq_max_cut  = float(request.form.get("dyneq_max_cut",   3.0))
+    bass_side_mix      = float(request.form.get("bass_side_mix",      0.15))
+    hishelf_threshold  = float(request.form.get("hishelf_threshold", -99.0))
 
     gain_db      = round(20 * np.log10(presence_gain + 1), 1)
     profile_tag  = '_local' if profile == 'local' else '_streaming'
@@ -132,6 +135,8 @@ def master_route():
                transient_boost=transient_boost,
                dyneq_threshold=dyneq_threshold,
                dyneq_max_cut=dyneq_max_cut,
+               bass_side_mix=bass_side_mix,
+               hishelf_threshold=hishelf_threshold,
                profile=profile)
         qc = qc_check(str(output_path))
     except Exception as e:
@@ -265,6 +270,48 @@ def dejinx_route():
     return jsonify({"status": "ok", "output": output_name, "repairs": repairs})
 
 
+@app.route("/repair_status")
+def repair_status():
+    return jsonify({
+        "demucs_available": _demucs_available(),
+        "phase_available":  True
+    })
+
+
+@app.route("/repair", methods=["POST"])
+def repair_route():
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    f = request.files["file"]
+    if not f.filename.lower().endswith(".wav"):
+        return jsonify({"error": "Only WAV files are supported"}), 400
+
+    method        = request.form.get("method", "auto")
+    original_stem = Path(f.filename).stem
+    output_name   = f"{original_stem}_repaired.wav"
+    input_path    = UPLOAD_DIR / "repair_input.wav"
+    output_path   = UPLOAD_DIR / output_name
+
+    f.save(str(input_path))
+    _reset_log()
+
+    try:
+        _, repairs = repair_boundaries(str(input_path), str(output_path),
+                                       method=method)
+    except ImportError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({
+        "status":  "ok",
+        "output":  output_name,
+        "repairs": repairs,
+        "method":  method
+    })
+
+
 @app.route("/bridge", methods=["POST"])
 def bridge_route():
     if "file" not in request.files:
@@ -360,7 +407,7 @@ def ping():
 
 if __name__ == "__main__":
     print("\n┌─────────────────────────────────────────────┐")
-    print("│  Spotify Mastering Server  — localhost:5051 │")
+    print("│  StreamMaster v1.2  —  localhost:5051         │")
     print("└─────────────────────────────────────────────┘")
     print("  Opening http://localhost:5051 in your browser…\n")
     threading.Timer(1.0, lambda: webbrowser.open("http://localhost:5051")).start()

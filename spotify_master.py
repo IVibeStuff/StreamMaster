@@ -38,7 +38,7 @@ from pathlib import Path
 # New processing stages
 from mastering_extras import (
     air_restore, spectral_dehaze, multiband_compress,
-    dynamic_eq, transient_shape, de_ess
+    dynamic_eq, transient_shape, de_ess, dynamic_highshelf
 )
 from vocalride import vocal_ride
 
@@ -147,7 +147,8 @@ def apply_eq(audio, sr, shelf_db=HIGH_SHELF_GAIN, mud_db=LOW_MID_GAIN):
 
 # ── Step 4 — Mid-Side Processing ──────────────────────────────────────────────
 
-def apply_ms_processing(audio, sr, presence_gain=MS_PRESENCE_GAIN):
+def apply_ms_processing(audio, sr, presence_gain=MS_PRESENCE_GAIN,
+                        bass_side_mix=MS_BASS_SIDE_MIX):
     """
     Bass tightening: sub-120 Hz content rolled off in the side channel.
     Presence widening: 2–8 kHz side channel boosted by presence_gain
@@ -164,7 +165,7 @@ def apply_ms_processing(audio, sr, presence_gain=MS_PRESENCE_GAIN):
     sos_lp = signal.butter(4, MS_BASS_FREQ / (sr / 2),
                            btype='low', output='sos')
     side_bass = signal.sosfilt(sos_lp, side)
-    side_tight = (side - side_bass) + side_bass * MS_BASS_SIDE_MIX
+    side_tight = (side - side_bass) + side_bass * bass_side_mix
 
     # Presence widening — band-pass and blend back
     sos_bp = signal.butter(2,
@@ -176,7 +177,7 @@ def apply_ms_processing(audio, sr, presence_gain=MS_PRESENCE_GAIN):
 
     gain_db = 20 * np.log10(presence_gain + 1)
     print(f"  M/S proc : bass anchored (sub-{MS_BASS_FREQ}Hz side → "
-          f"{MS_BASS_SIDE_MIX*100:.0f}%)  "
+          f"{bass_side_mix*100:.0f}%)  "
           f"presence +{gain_db:.1f} dB @ {MS_PRESENCE_LOW//1000}–"
           f"{MS_PRESENCE_HIGH//1000} kHz side")
 
@@ -407,7 +408,7 @@ def master(input_path, output_path=None,
            presence_gain   = MS_PRESENCE_GAIN,
            deess_threshold = 2.0,
            vocal_boost_db  = 4.0,
-           macro_target_db = MACRO_TARGET_DB,
+           macro_target_db = 0,          # 0 = Off by default — opt in per track
            # ── Expert controls (locked by default) ───────────────────────
            eq_shelf_db     =  1.5,   # high shelf gain at 10 kHz
            eq_mud_db       = -2.0,   # peak cut at 380 Hz
@@ -420,7 +421,9 @@ def master(input_path, output_path=None,
            transient_boost =  2.5,   # dB boost on attack transients (0 = off)
            dyneq_threshold = -24.0,  # dynamic EQ threshold relative to band median
            dyneq_max_cut   =  3.0,   # max dB cut from dynamic EQ
-           profile         = 'streaming',  # 'streaming' or 'local'
+           bass_side_mix     =  MS_BASS_SIDE_MIX,  # 0=mono sub, 1=preserve wide sub
+           hishelf_threshold =  -99.0,  # dynamic hi-shelf: -99=Off, e.g. -28=active
+           profile           = 'streaming',  # 'streaming' or 'local'
            ):
     if output_path is None:
         p = Path(input_path)
@@ -437,8 +440,10 @@ def master(input_path, output_path=None,
     audio = apply_eq(audio, sr, shelf_db=eq_shelf_db, mud_db=eq_mud_db)
     audio = air_restore(audio, sr, blend=air_blend)
     audio = spectral_dehaze(audio, sr, depth=dehaze_depth)
-    audio = apply_ms_processing(audio, sr, presence_gain)
+    audio = apply_ms_processing(audio, sr, presence_gain,
+                                bass_side_mix=bass_side_mix)
     audio = de_ess(audio, sr, threshold_db=deess_threshold)
+    audio = dynamic_highshelf(audio, sr, threshold_db=hishelf_threshold)
     audio = apply_saturation(audio, drive_db=sat_drive_db, mix=sat_mix)
     audio = multiband_compress(audio, sr,
                                threshold_db=comp_threshold, ratio=comp_ratio)

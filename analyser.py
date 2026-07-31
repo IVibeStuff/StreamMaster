@@ -383,6 +383,30 @@ def _recommend(loudness, stereo, spectrum, sibilance, transients,
             "been heavily compressed internally. Transient shaping will restore snap.",
             'Auto'))
 
+    # ── Macro dynamics — based on natural dynamic range ──────────────────────
+    dr = loudness.get('dynamic_range_db', 0)
+    if dr > 14:
+        # Track already has strong natural dynamics — don't compress them
+        settings['macro_target_db'] = 0
+        recs.append(('Macro dynamics',
+            f"Natural dynamic range is {dr:.1f} dB — well-shaped already. "
+            "Macro dynamics set to Off to preserve the natural contour.",
+            'Off'))
+    elif dr > 10:
+        # Moderate dynamics — gentle touch
+        settings['macro_target_db'] = 1.5
+        recs.append(('Macro dynamics',
+            f"Natural dynamic range is {dr:.1f} dB. Light macro dynamics "
+            "will gently even out sections without flattening the shape.",
+            '1.5 dB'))
+    else:
+        # Flat dynamics — standard setting
+        settings['macro_target_db'] = 3.5
+        recs.append(('Macro dynamics',
+            f"Dynamic range is {dr:.1f} dB — relatively flat. "
+            "Macro dynamics will add contrast between sections.",
+            '3.5 dB'))
+
     # ── LUFS ─────────────────────────────────────────────────────────────────
     lufs_diff = abs(loudness['lufs'] - (-14.0))
     if lufs_diff > 6:
@@ -393,6 +417,11 @@ def _recommend(loudness, stereo, spectrum, sibilance, transients,
             f"{loudness['lufs']:+.1f} → −14.0 LUFS"))
 
     settings['notes'] = recs
+    # ── Sub-bass side mix — default 0.15, preserve at 1.0 for wide-sub tracks ─
+    # No heuristic currently — always recommend default
+    # Users with intentional wide sub-bass should override in Expert panel
+    settings['bass_side_mix'] = 0.15
+
     return settings
 
 

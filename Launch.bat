@@ -1,11 +1,11 @@
 @echo off
 chcp 65001 >nul
-title Spotify Master Tool
+title StreamMaster
 color 0A
 
 echo.
 echo  ==========================================
-echo   Spotify Master Tool
+echo   StreamMaster v1.2
 echo  ==========================================
 echo.
 
@@ -47,8 +47,7 @@ if errorlevel 1 (
 )
 
 :launch
-echo  Starting server...
-echo  Browser will open automatically at http://localhost:5051
+echo  Starting...  Browser will open at http://localhost:5051
 echo  Close this window to stop the tool.
 echo.
 python "%~dp0server.py"

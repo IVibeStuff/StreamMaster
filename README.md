@@ -1,12 +1,17 @@
 # StreamMaster
 
-**AI Music Mastering Suite — v1.1**
+<p align="center">
+  <img src="docs/logo_hero.png" alt="StreamMaster" width="640"/>
+</p>
+
+**AI Music Mastering Suite — v1.2**
 
 A local, open-source mastering toolkit for Suno and other AI-generated music. Prepares WAV files for professional streaming upload or personal listening. Runs entirely on your machine — no audio leaves your computer, no subscription required.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![Version](https://img.shields.io/badge/version-1.2-1DB954)
 
 ---
 
@@ -134,6 +139,8 @@ TrackName_remaster_w1.9dB_d-2_v0_m3.5_streaming.wav
 | `heal.py` | Seam healer |
 | `levelbridge.py` | Level/gain bridge |
 | `requirements.txt` | Python dependencies |
+| `logo.svg` | App icon / scalable logo mark |
+| `docs/logo_hero.png` | Hero image for README and promotional use |
 
 ---
 
@@ -149,6 +156,21 @@ pip install -r requirements.txt
 ```
 
 Packages: `flask` `flask-cors` `pyloudnorm` `soundfile` `scipy` `numpy` `matchering`
+
+---
+
+## Known behaviours
+
+**Stereo width narrowing on tracks with wide sub-bass sound design**
+The mastering chain anchors sub-bass (below 120 Hz) towards the centre by default — this tightens the low end for streaming and corrects unintentional bass smear common in Suno output. However, for tracks where wide low-frequency effects are an intentional creative choice (distortion that sits "outside the ears", wide synth bass, etc.), this will reduce the perceived width compared to the raw Suno file.
+
+Fix: open the **Expert panel** on the Master tab and increase **Sub-bass side mix** from the default 15% towards 100%. At 100% the sub-bass stereo field is fully preserved as Suno generated it.
+
+**Streaming master sounds brighter/sharper than the local version**
+The streaming output (−14 LUFS, −1 dBTP) is intentionally forward and bright — calibrated to survive Ogg Vorbis encoding and Spotify's playback processing, which softens high frequencies. The local version (−16 LUFS, −2 dBTP) pre-applies a gentle high-frequency rolloff that approximates what a listener hears after platform encoding. If the streaming master sounds sharp in your local player, that is expected and correct.
+
+**De-esser affects voice character at higher settings**
+The de-esser uses a band-split architecture (5–10 kHz only) which preserves vocal body below 5 kHz. However at Strong/Aggressive/Max settings it can still affect perceived voice character, particularly on tracks where sibilance is part of the vocal style. Most Suno tracks do not need de-essing — the default is Off.
 
 ---
 

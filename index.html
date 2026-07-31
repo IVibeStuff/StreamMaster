@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StreamMaster v1.1</title>
+<title>StreamMaster v1.2</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -55,6 +55,36 @@
     border-radius:4px; border:1px solid var(--border); overflow:hidden;
   }
   .fi-waveform canvas { display:block; width:100%; height:100%; }
+
+  /* Panel info blocks */
+  .panel-info {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 7px; padding: 0.85rem 1rem; display: flex;
+    flex-direction: column; gap: 0.4rem;
+  }
+  .panel-info-title {
+    font-family: var(--mono); font-size: 0.65rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--green); margin: 0 0 0.3rem;
+    font-weight: 600;
+  }
+  .panel-info-body {
+    font-size: 0.8rem; color: var(--muted); line-height: 1.6;
+  }
+  .panel-info-body strong { color: var(--text); font-weight: 500; }
+  .panel-info-body ul { color: var(--muted); }
+  .panel-info-body li { margin-bottom: 0.15rem; }
+
+  /* Repair method buttons */
+  .method-btn {
+    font-family: var(--mono); font-size: 0.68rem;
+    padding: 0.3rem 0.7rem; border-radius: 5px;
+    border: 1px solid var(--border); background: none;
+    color: var(--muted); cursor: pointer;
+    transition: all 0.15s;
+  }
+  .method-btn:hover:not(:disabled) { border-color: var(--green); color: var(--text); }
+  .method-btn.active { border-color: var(--green); color: var(--green); background: rgba(29,185,84,0.1); }
+  .method-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
   /* Local listening button — slightly muted vs streaming green */
   .btn-local {
@@ -157,7 +187,17 @@
   h1 span { color:var(--green); }
   .header-sub { margin-top:0.5rem; color:var(--muted); font-size:0.88rem; font-weight:300; }
 
-  .tabs { display:flex; width:100%; max-width:560px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius) var(--radius) 0 0; overflow:hidden; }
+  .tab-groups { display:flex; flex-direction:column; gap:0; width:100%; max-width:560px; }
+  .tab-group { display:flex; flex-direction:column; gap:0; }
+  .tab-group-label {
+    font-family: var(--mono); font-size: 0.58rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted);
+    padding: 0.45rem 0.8rem 0.2rem;
+    background: var(--bg);
+  }
+  .tab-group:first-child .tab-group-label { padding-top: 0; }
+  .tabs { display:flex; width:100%; background:var(--surface); border:1px solid var(--border); border-bottom:none; overflow:hidden; }
+  .tab-group:last-child .tabs { border-radius:0; border-bottom:1px solid var(--border); }
   .tab-btn { flex:1; padding:0.85rem 0.5rem; background:none; border:none; color:var(--muted); font-family:var(--sans); font-size:0.85rem; font-weight:500; cursor:pointer; transition:color 0.15s,background 0.15s; border-bottom:2px solid transparent; }
   .tab-btn:hover { color:var(--text); }
   .tab-btn.active { color:var(--green); border-bottom-color:var(--green); background:rgba(29,185,84,0.04); }
@@ -355,7 +395,7 @@
   <p class="header-eyebrow">StreamMaster</p>
   <h1>Ready for <span>Streaming</span></h1>
   <p class="header-sub">−14 LUFS · −1 dBTP · 44.1 kHz · 16-bit</p>
-  <button class="about-btn" onclick="toggleAbout()">v1.1 — about</button>
+  <button class="about-btn" onclick="toggleAbout()">v1.2 — about</button>
 </header>
 
 <div class="layout">
@@ -387,7 +427,7 @@
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:480px;width:100%;position:relative">
     <button onclick="toggleAbout()" style="position:absolute;top:0.8rem;right:0.8rem;background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;line-height:1">✕</button>
     <p style="font-family:var(--mono);font-size:0.65rem;color:var(--green);letter-spacing:0.15em;text-transform:uppercase;margin:0 0 0.4rem">StreamMaster</p>
-    <h2 style="font-size:1.6rem;font-weight:700;margin:0 0 0.2rem">Version 1.1</h2>
+    <h2 style="font-size:1.6rem;font-weight:700;margin:0 0 0.2rem">Version 1.2</h2>
     <p style="color:var(--muted);font-size:0.85rem;margin:0 0 1.2rem">AI Music Mastering Suite</p>
     <div style="border-top:1px solid var(--border);padding-top:1rem;display:grid;grid-template-columns:130px 1fr;gap:0.35rem 0.5rem;font-size:0.82rem">
       <span style="color:var(--text);font-weight:500">Streaming target</span><span style="color:var(--muted)">−14 LUFS · −1 dBTP · 44.1 kHz / 16-bit</span>
@@ -405,14 +445,25 @@
   </div>
 </div>
 
-<div class="tabs">
-  <button class="tab-btn active" id="tabAnalyse"  onclick="switchTab('analyse')">🔬 Analyse</button>
-  <button class="tab-btn"        id="tabMaster"   onclick="switchTab('master')">🎛 Master</button>
-  <button class="tab-btn"        id="tabSplice"   onclick="switchTab('splice')">✂️ Splice</button>
-  <button class="tab-btn"        id="tabHeal"     onclick="switchTab('heal')">🩹 Heal</button>
-  <button class="tab-btn"        id="tabBridge"   onclick="switchTab('bridge')">📈 Bridge</button>
-  <button class="tab-btn"        id="tabDejinx"   onclick="switchTab('dejinx')">⚡ De-Jinx</button>
-  <button class="tab-btn"        id="tabRefmatch" onclick="switchTab('refmatch')">🎯 Ref match</button>
+<div class="tab-groups">
+  <div class="tab-group">
+    <span class="tab-group-label">Mastering</span>
+    <div class="tabs">
+      <button class="tab-btn active" id="tabAnalyse"  onclick="switchTab('analyse')">🔬 Analyse</button>
+      <button class="tab-btn"        id="tabMaster"   onclick="switchTab('master')">🎛 Master</button>
+      <button class="tab-btn"        id="tabRefmatch" onclick="switchTab('refmatch')">🎯 Ref Match</button>
+    </div>
+  </div>
+  <div class="tab-group">
+    <span class="tab-group-label">Repair &amp; Restoration</span>
+    <div class="tabs">
+      <button class="tab-btn" id="tabDejinx"  onclick="switchTab('dejinx')">⚡ De-Jinx</button>
+      <button class="tab-btn" id="tabRepair"  onclick="switchTab('repair'); checkRepairStatus()">🔧 Repair</button>
+      <button class="tab-btn" id="tabSplice"  onclick="switchTab('splice')">✂️ Splice</button>
+      <button class="tab-btn" id="tabHeal"    onclick="switchTab('heal')">🩹 Heal</button>
+      <button class="tab-btn" id="tabBridge"  onclick="switchTab('bridge')">📈 Bridge</button>
+    </div>
+  </div>
 </div>
 
 <div class="card">
@@ -425,9 +476,10 @@
 
   <!-- ══════════ ANALYSE ══════════ -->
   <div class="panel active" id="panelAnalyse">
-    <p style="font-size:0.8rem; color:var(--muted); line-height:1.55;">
-      Drop any WAV — the analyser will measure it and recommend the right settings before you master.
-    </p>
+    <div class="panel-info">
+      <p class="panel-info-title">Track Analysis</p>
+      <div class="panel-info-body"><p style="margin:0 0 0.5rem">Scans your WAV and produces a full diagnostic report — loudness, stereo image, spectral balance, sibilance levels, synthesis dropouts, and AI engine detection.</p><p style="margin:0 0 0.5rem">Recommended settings are stored automatically. Switch to the Master tab and click <strong>Apply analysis settings</strong> to transfer them.</p><p style="margin:0.5rem 0 0.25rem;font-weight:500;color:var(--text)">Use this when:</p><ul style="margin:0;padding-left:1.2rem"><li>Starting with a new Suno track before mastering</li><li>Checking whether a track has synthesis dropouts before De-Jinx</li><li>Comparing two versions of the same track</li></ul><p style="margin:0.6rem 0 0;padding:0.4rem 0.6rem;background:rgba(29,185,84,0.06);border-left:2px solid var(--green);border-radius:0 4px 4px 0;color:var(--green);font-size:0.72rem">💡 The analyser detects Suno vs other AI engines and sets the stereo width preset accordingly.</p></div>
+    </div>
     <div class="drop-zone" id="analyseDrop">
       <span class="drop-icon">🔬</span>
       <p class="drop-label">Drop your WAV here to analyse</p>
@@ -446,7 +498,12 @@
   </div>
 
   <!-- ══════════ MASTER ══════════ -->
-  <div class="panel" id="panelMaster">    <div class="spec-row">
+  <div class="panel" id="panelMaster">
+    <div class="panel-info">
+      <p class="panel-info-title">15-Stage Mastering Chain</p>
+      <div class="panel-info-body"><p style="margin:0 0 0.5rem">Prepares your WAV for streaming upload or personal listening. The chain runs automatically — EQ, air restoration, spectral dehaze, M/S widening, compression, transient shaping, loudness normalisation, and true-peak limiting.</p><p style="margin:0 0 0.5rem"><strong>Streaming</strong> outputs −14 LUFS / −1 dBTP — bright and forward, calibrated to survive Spotify, Apple Music, and Tidal's encoding. <strong>Local</strong> outputs −16 LUFS / −2 dBTP — warmer, for personal listening without platform processing.</p><p style="margin:0.5rem 0 0.25rem;font-weight:500;color:var(--text)">Use this when:</p><ul style="margin:0;padding-left:1.2rem"><li>Final step before uploading to a streaming platform</li><li>Producing a personal listening copy alongside the streaming master</li><li>After De-Jinx or Repair — always master the repaired file, not the raw Suno export</li></ul><p style="margin:0.6rem 0 0;padding:0.4rem 0.6rem;background:rgba(29,185,84,0.06);border-left:2px solid var(--green);border-radius:0 4px 4px 0;color:var(--green);font-size:0.72rem">💡 Run De-Jinx and Repair first. Master last.</p></div>
+    </div>
+    <div class="spec-row">
       <span class="pill">−14 LUFS</span><span class="pill">−1 dBTP</span>
       <span class="pill">EQ comp</span><span class="pill">M/S processing</span>
       <span class="pill">saturation</span><span class="pill">multiband</span>
@@ -479,10 +536,10 @@
       </div>
       <div class="xfade-row">
         <label>
-          Macro dynamics <span id="macroVal">3.5 dB</span>
+          Macro dynamics <span id="macroVal">Off</span>
           <span style="font-size:0.6rem;color:var(--muted);font-weight:300;margin-left:4px">0 = Off — preserve natural dynamics</span>
         </label>
-        <input type="range" id="macroSlider" min="0" max="6" step="0.5" value="3.5" />
+        <input type="range" id="macroSlider" min="0" max="6" step="0.5" value="0" />
       </div>
     </div>
     <button class="btn-apply-analysis" id="applyAnalysisBtn" style="display:none" onclick="applyRecommendations()">
@@ -539,6 +596,19 @@
         </div>
 
         <div class="xfade-row">
+          <label>
+            Sub-bass side mix <span id="bassSideVal">15%</span>
+            <span style="font-size:0.6rem;color:var(--muted);font-weight:300;display:block;margin-top:0.25rem;line-height:1.5">
+              Controls how much sub-bass (below 120 Hz) stays in the stereo side channel.<br>
+              <span style="color:var(--text)">15%</span> — tightens bass to centre (recommended for most tracks)<br>
+              <span style="color:var(--text)">50%</span> — balanced, some sub-bass width preserved<br>
+              <span style="color:var(--text)">100%</span> — fully preserves wide sub-bass (use for tracks with intentional wide low-frequency effects)
+            </span>
+          </label>
+          <input type="range" id="bassSideSlider" min="0" max="1" step="0.05" value="0.15" oninput="document.getElementById('bassSideVal').textContent=Math.round(this.value*100)+'%'; resetMasterIfDone()" />
+        </div>
+
+        <div class="xfade-row">
           <label>Transient boost <span id="transientVal">+2.5 dB</span></label>
           <input type="range" id="transientSlider" min="0" max="6" step="0.5" value="2.5" oninput="updateExpertLabel('transientVal',this.value,'+','dB'); resetMasterIfDone()" />
         </div>
@@ -546,6 +616,18 @@
         <div class="xfade-row">
           <label>Dyn EQ max cut <span id="dyneqVal">3 dB</span></label>
           <input type="range" id="dyneqSlider" min="0" max="8" step="0.5" value="3" oninput="updateExpertLabel('dyneqVal',this.value,'','dB'); resetMasterIfDone()" />
+        </div>
+
+        <div class="xfade-row" style="grid-column:1/-1">
+          <label>
+            High-freq dynamics <span id="hishelfVal">Off</span>
+            <span style="font-size:0.6rem;color:var(--muted);font-weight:300;display:block;margin-top:0.1rem">Dynamic high-shelf above 5 kHz. Reduces harshness when high-frequency energy peaks. Off = bypassed. Raise the threshold value towards 0 for more aggressive reduction (e.g. −28 for tracks with cutting sibilance).</span>
+          </label>
+          <input type="range" id="hishelfSlider" min="-40" max="-10" step="1" value="-99"
+            oninput="
+              const v=parseFloat(this.value);
+              document.getElementById('hishelfVal').textContent = v<=-38 ? 'Off' : v+'dBRMS';
+              resetMasterIfDone()" />
         </div>
 
       </div>
@@ -604,6 +686,11 @@
 
   <!-- ══════════ SPLICE ══════════ -->
   <div class="panel" id="panelSplice">
+    <div class="panel-info">
+      <p class="panel-info-title">Section Replacement</p>
+      <div class="panel-info-body"><p style="margin:0 0 0.5rem">Replaces a specific time range with new audio — either a section regenerated in Suno's editor, or a different clip entirely. The tool handles level-matching and crossfading at both cut points so the join sounds natural.</p><p style="margin:0 0 0.5rem">This is the most surgical repair option: if De-Jinx and Repair can't fix a section, regenerate just that section in Suno and splice it in here.</p><p style="margin:0.5rem 0 0.25rem;font-weight:500;color:var(--text)">Use this when:</p><ul style="margin:0;padding-left:1.2rem"><li>A section is too corrupted for phase repair to fix — especially if the mid channel is also damaged</li><li>You've regenerated a section in Suno's editor and want to combine it with the original</li><li>The key changes unexpectedly at a Suno boundary and you want to replace the transition</li></ul><p style="margin:0.6rem 0 0;padding:0.4rem 0.6rem;background:rgba(29,185,84,0.06);border-left:2px solid var(--green);border-radius:0 4px 4px 0;color:var(--green);font-size:0.72rem">💡 Cut points should be set in clean audio on both sides of the fault — at least 0.5s away from the problem.</p></div>
+    </div>
+
     <div class="spec-row">
       <span class="pill">zero-crossing snap</span>
       <span class="pill">loudness match</span>
@@ -685,6 +772,11 @@
 
   <!-- ══════════ HEAL ══════════ -->
   <div class="panel" id="panelHeal">
+    <div class="panel-info">
+      <p class="panel-info-title">Seam Smoothing</p>
+      <div class="panel-info-body"><p style="margin:0 0 0.5rem">Smooths the amplitude join at a point where Suno has already performed an internal section replacement. Suno's own Extend and Replace features sometimes leave a detectable level step or timbral shift at the boundary.</p><p style="margin:0 0 0.5rem">Heal applies a short crossfade centred on the seam timestamp. It works on level discontinuities — if the problem is phase corruption rather than a level step, use the Repair tab instead.</p><p style="margin:0.5rem 0 0.25rem;font-weight:500;color:var(--text)">Use this when:</p><ul style="margin:0;padding-left:1.2rem"><li>Suno's internal Replace or Extend left an audible click or level step</li><li>After using the Splice tab — to soften any remaining edge in the join</li><li>A mastered file has a subtle level shift at a known timestamp</li></ul><p style="margin:0.6rem 0 0;padding:0.4rem 0.6rem;background:rgba(29,185,84,0.06);border-left:2px solid var(--green);border-radius:0 4px 4px 0;color:var(--green);font-size:0.72rem">💡 Heal works on amplitude. If the join sounds hollow or phase-y rather than clicky or steppy, it's a phase issue — use Repair, not Heal.</p></div>
+    </div>
+
     <div class="spec-row">
       <span class="pill">zero-crossing snap</span><span class="pill">level match</span>
       <span class="pill">gain ramp</span><span class="pill">spectral blend</span>
@@ -752,6 +844,11 @@
   </div>
   <!-- ══════════ BRIDGE ══════════ -->
   <div class="panel" id="panelBridge">
+    <div class="panel-info">
+      <p class="panel-info-title">Level Bridge</p>
+      <div class="panel-info-body"><p style="margin:0 0 0.5rem">Rides the gain across a quiet passage to bring it up to match the surrounding level. Useful when Suno generates an unexpectedly quiet verse or bridge, or when a splice creates a level imbalance between sections.</p><p style="margin:0 0 0.5rem">The tool analyses the level on both sides of the quiet zone and applies a smooth gain automation curve that interpolates between them.</p><p style="margin:0.5rem 0 0.25rem;font-weight:500;color:var(--text)">Use this when:</p><ul style="margin:0;padding-left:1.2rem"><li>A section is noticeably quieter than the rest of the track</li><li>A splice created a level step that Heal didn't fully resolve</li><li>Suno generated a verse at a different level to the chorus</li></ul><p style="margin:0.6rem 0 0;padding:0.4rem 0.6rem;background:rgba(29,185,84,0.06);border-left:2px solid var(--green);border-radius:0 4px 4px 0;color:var(--green);font-size:0.72rem">💡 Set the start and end timestamps to the edges of the quiet zone, not the centre. The bridge fades in from the louder section on each side.</p></div>
+    </div>
+
     <div class="spec-row">
       <span class="pill">smooth gain ride</span>
       <span class="pill">S-curve interpolation</span>
@@ -817,6 +914,11 @@
 
   <!-- ══════════ DEJINX ══════════ -->
   <div class="panel" id="panelDejinx">
+    <div class="panel-info">
+      <p class="panel-info-title">Synthesis Dropout Repair</p>
+      <div class="panel-info-body"><p style="margin:0 0 0.5rem">Suno's generation model occasionally loses coherence briefly — the audio collapses to near-silence for 80–300ms before recovering. These dropouts sound like a brief cut, mute, or glitch in an otherwise continuous section.</p><p style="margin:0 0 0.5rem">De-Jinx scans the full track, detects these collapses by measuring sudden level drops relative to the surrounding context, and repairs them using crossfaded content from adjacent clean audio. Every repair is shown with its exact timestamp and duration.</p><p style="margin:0.5rem 0 0.25rem;font-weight:500;color:var(--text)">Use this when:</p><ul style="margin:0;padding-left:1.2rem"><li>You hear a brief cut, click, or mute somewhere in the track</li><li>The Analyse tab reports synthesis dropouts detected</li><li>Before mastering — always De-Jinx first if dropouts are present</li></ul><p style="margin:0.6rem 0 0;padding:0.4rem 0.6rem;background:rgba(29,185,84,0.06);border-left:2px solid var(--green);border-radius:0 4px 4px 0;color:var(--green);font-size:0.72rem">💡 Dropouts are different from boundary corruption (phase artefacts). If De-Jinx finds nothing but you still hear something wrong, try the Repair tab.</p></div>
+    </div>
+
     <div class="spec-row">
       <span class="pill">auto-detect</span>
       <span class="pill">micro-dropout repair</span>
@@ -858,8 +960,72 @@
     <button class="btn btn-reset" id="dejinxReset" style="display:none">Start over</button>
   </div>
 
+  <!-- ══════════ REPAIR ══════════ -->
+  <div class="panel" id="panelRepair">
+    <div class="panel-info">
+      <p class="panel-info-title">Generation Boundary Repair</p>
+      <div class="panel-info-body"><p style="margin:0 0 0.5rem">Suno generates songs in sections. At the join between sections, the stereo field can become phase-incoherent — the left and right channels partially cancel each other, producing a hollow, "lifted", or flanging quality. This is distinct from a dropout and cannot be fixed by De-Jinx.</p><p style="margin:0 0 0.5rem"><strong>Phase repair</strong> (always available) isolates the corrupted zone, extracts the mid channel which is usually intact, reconstructs the stereo side channel from flanking clean content, and crossfades back. <strong>Stem repair</strong> (requires Demucs) separates the track into vocals and accompaniment before repairing each stem independently — better results on severely corrupted files.</p><p style="margin:0.5rem 0 0.25rem;font-weight:500;color:var(--text)">Use this when:</p><ul style="margin:0;padding-left:1.2rem"><li>You hear a hollow, "raised", or phase-y quality at a specific moment</li><li>Heal didn't fully fix a seam — the artefact may be phase corruption rather than a level join</li><li>The Repair tab shows multiple corruption zones — the song may have systematic boundary issues</li></ul><p style="margin:0.6rem 0 0;padding:0.4rem 0.6rem;background:rgba(29,185,84,0.06);border-left:2px solid var(--green);border-radius:0 4px 4px 0;color:var(--green);font-size:0.72rem">💡 Suno's Remaster feature inherits boundary corruption from the original — remastering in Suno will not fix it. Use this tab instead.</p></div>
+    </div>
+
+    <div class="spec-row">
+      <span class="pill">phase repair</span>
+      <span class="pill">boundary detection</span>
+      <span class="pill">stem repair (Demucs)</span>
+    </div>
+    <p style="font-size:0.8rem;color:var(--muted);line-height:1.55;">
+      Detects and repairs Suno generation boundary corruption — the phase inversion artefacts that cause a "lift" or hollow sound at section joins. Phase repair works immediately with no extra dependencies. Stem repair (requires Demucs) separates the track into vocals and accompaniment before repairing, giving better results on severely corrupted files.
+    </p>
+
+    <div id="repairDemucsStatus" style="font-family:var(--mono);font-size:0.68rem;padding:0.4rem 0.6rem;border-radius:5px;margin-bottom:0.5rem;display:none"></div>
+
+    <div class="xfade-row" style="margin-bottom:0.5rem">
+      <label>Repair method</label>
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+        <button class="method-btn active" id="methodPhase" onclick="setRepairMethod('phase')">Phase repair</button>
+        <button class="method-btn" id="methodStem" onclick="setRepairMethod('stem')" disabled>Stem repair (Demucs)</button>
+      </div>
+    </div>
+    <p id="repairMethodDesc" style="font-size:0.75rem;color:var(--muted);margin-bottom:0.5rem">Reconstructs the stereo side channel in corrupted zones using context from flanking clean sections. No additional dependencies required.</p>
+
+    <div class="drop-zone" id="repairDrop">
+      <span class="drop-icon">🎵</span>
+      <p class="drop-label">Drop your WAV here</p>
+      <p class="drop-hint">or click to browse</p>
+      <p class="file-name" id="repairFileName"></p>
+    </div>
+    <input class="file-input" type="file" id="repairFile" accept=".wav" />
+
+    <button class="btn btn-primary" id="repairBtn" disabled>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      Repair boundaries
+    </button>
+
+    <div class="status-bar" id="repairStatus">
+      <div class="progress-track"><div class="progress-fill" id="repairProgress"></div></div>
+      <p class="status-text" id="repairStatusText"></p>
+    </div>
+
+    <div id="repairZoneList" style="display:none;flex-direction:column;gap:0.25rem;margin-top:0.3rem"></div>
+
+    <div class="download-row" id="repairDownloadRow" style="display:none">
+      <button class="btn btn-download" id="repairDownload" style="display:flex;width:100%">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download repaired WAV
+      </button>
+      <button class="btn btn-use" id="repairUse" onclick="useInTool('repairDownload')" title="Load into all tabs">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg> Use in tool
+      </button>
+    </div>
+    <button class="btn btn-reset" id="repairReset" style="display:none">Start over</button>
+  </div>
+
   <!-- ══════════ REF MATCH ══════════ -->
   <div class="panel" id="panelRefmatch">
+    <div class="panel-info">
+      <p class="panel-info-title">Reference Track Matching</p>
+      <div class="panel-info-body"><p style="margin:0 0 0.5rem">Matches the tonal balance and loudness of your track to a commercially released reference using Matchering — an open-source mastering algorithm that analyses both files spectrally and adjusts EQ and level accordingly.</p><p style="margin:0 0 0.5rem">This is a complement to the Master tab, not a replacement. Master first to hit −14 LUFS and correct Suno's spectral issues, then use Ref Match if you want the final result to sit closer to a specific commercial sound.</p><p style="margin:0.5rem 0 0.25rem;font-weight:500;color:var(--text)">Use this when:</p><ul style="margin:0;padding-left:1.2rem"><li>You have a specific commercial track you want your song to sound like</li><li>The mastered output sounds tonally different to your target genre</li><li>A&R or client has provided a reference track</li></ul><p style="margin:0.6rem 0 0;padding:0.4rem 0.6rem;background:rgba(29,185,84,0.06);border-left:2px solid var(--green);border-radius:0 4px 4px 0;color:var(--green);font-size:0.72rem">💡 The reference track should be a commercially released WAV or high-quality file in the same genre and tempo range as your track. Mismatched references produce unpredictable results.</p></div>
+    </div>
+
     <div class="spec-row">
       <span class="pill">RMS match</span>
       <span class="pill">frequency curve match</span>
@@ -951,10 +1117,74 @@ const SHARED_ZONES = [
   { zone:'healDrop',     name:'healFileName',     btn:'healBtn',     obj:'healFileObj'     },
   { zone:'bridgeDrop',   name:'bridgeFileName',   btn:'bridgeBtn',   obj:'bridgeFileObj'   },
   { zone:'dejinxDrop',   name:'dejinxFileName',   btn:'dejinxBtn',   obj:'dejinxFileObj'   },
+    { zone:'repairDrop',   name:'repairFileName',   btn:'repairBtn',   obj:'repairFileObj'   },
 ];
+
+function resetAllTabs() {
+  // Clear all result states when a new file is loaded
+  // so stale output from the previous song is never visible
+
+  // ── Analyse ──────────────────────────────────────────────────────────────
+  document.getElementById('analyseReport').innerHTML = '';
+  document.getElementById('analyseStatus').classList.remove('visible');
+  document.getElementById('applyAnalysisBtn').style.display = 'none';
+  window._lastAnalysis = null;
+
+  // ── Master (streaming + local) ────────────────────────────────────────────
+  ['masterDownloadRow','masterDownloadRowLocal'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  document.getElementById('masterReset').style.display        = 'none';
+  document.getElementById('masterStatus').classList.remove('visible');
+  document.getElementById('masterStatusLocal').classList.remove('visible');
+  document.getElementById('masterBtn').disabled      = false;
+  document.getElementById('masterBtnLocal').disabled = false;
+
+  // ── De-Jinx ───────────────────────────────────────────────────────────────
+  document.getElementById('dejinxDownloadRow').style.display  = 'none';
+  document.getElementById('dejinxReset').style.display        = 'none';
+  document.getElementById('dejinxStatus').classList.remove('visible');
+  document.getElementById('dejinxRepairList').style.display   = 'none';
+  document.getElementById('dejinxRepairList').innerHTML       = '';
+
+  // ── Repair ────────────────────────────────────────────────────────────────
+  document.getElementById('repairDownloadRow').style.display  = 'none';
+  document.getElementById('repairReset').style.display        = 'none';
+  document.getElementById('repairStatus').classList.remove('visible');
+  document.getElementById('repairZoneList').style.display     = 'none';
+  document.getElementById('repairZoneList').innerHTML         = '';
+
+  // ── Splice ────────────────────────────────────────────────────────────────
+  document.getElementById('spliceDownloadRow').style.display  = 'none';
+  document.getElementById('spliceReset').style.display        = 'none';
+  document.getElementById('spliceStatus').classList.remove('visible');
+
+  // ── Heal ─────────────────────────────────────────────────────────────────
+  document.getElementById('healDownloadRow').style.display    = 'none';
+  document.getElementById('healReset').style.display          = 'none';
+  document.getElementById('healStatus').classList.remove('visible');
+
+  // ── Level Bridge ──────────────────────────────────────────────────────────
+  document.getElementById('bridgeDownloadRow').style.display  = 'none';
+  document.getElementById('bridgeReset').style.display        = 'none';
+  document.getElementById('bridgeStatus').classList.remove('visible');
+
+  // ── Ref Match ─────────────────────────────────────────────────────────────
+  document.getElementById('refmatchDownloadRow').style.display = 'none';
+  document.getElementById('refmatchStatus').classList.remove('visible');
+
+  // ── Console sidebar ───────────────────────────────────────────────────────
+  document.getElementById('consoleSidebar').classList.remove('visible');
+  document.getElementById('consoleBody').innerHTML = '';
+}
 
 function setSharedFile(file, skipTabSwitch = false) {
   if (!file) return;
+
+  // Reset all tab results when a new file is loaded by the user
+  // Don't reset when called programmatically (e.g. applyRecommendations)
+  if (!skipTabSwitch) resetAllTabs();
+
   sharedFile = file;
 
   // Set all file object variables
@@ -963,31 +1193,31 @@ function setSharedFile(file, skipTabSwitch = false) {
   healFileObj    = file;
   bridgeFileObj  = file;
   dejinxFileObj  = file;
+  repairFileObj  = file;
   splMasterFile  = file;
   refTargetFile  = file;
 
   // Update all single-file drop zone UIs
   const singleZones = [
-    ['analyseDrop','analyseFileName','analyseBtn'],
-    ['masterDrop', 'masterFileName', 'masterBtn' ],
-    ['healDrop',   'healFileName',   'healBtn'   ],
-    ['bridgeDrop', 'bridgeFileName', 'bridgeBtn' ],
-    ['dejinxDrop', 'dejinxFileName', 'dejinxBtn' ],
+    ['analyseDrop', 'analyseFileName', 'analyseBtn'],
+    ['masterDrop',  'masterFileName',  'masterBtn' ],
+    ['healDrop',    'healFileName',    'healBtn'   ],
+    ['bridgeDrop',  'bridgeFileName',  'bridgeBtn' ],
+    ['dejinxDrop',  'dejinxFileName',  'dejinxBtn' ],
+    ['repairDrop',  'repairFileName',  'repairBtn' ],
   ];
   singleZones.forEach(([zId, nId, bId]) => {
     const z = document.getElementById(zId);
     const n = document.getElementById(nId);
-    const b = document.getElementById(bId);
     if (n) n.textContent = file.name;
     if (z) z.classList.add('has-file');
-    // Don't blindly enable — some buttons need timestamps too
-    // (heal, bridge, splice) — their checkReady functions handle that
   });
-  // Master and dejinx and analyse can be enabled directly
-  document.getElementById('masterBtn').disabled  = false;
+  // Enable buttons that only need a file (no timestamps)
+  document.getElementById('masterBtn').disabled      = false;
   document.getElementById('masterBtnLocal').disabled = false;
-  document.getElementById('dejinxBtn').disabled  = false;
-  document.getElementById('analyseBtn').disabled = false;
+  document.getElementById('dejinxBtn').disabled      = false;
+  document.getElementById('analyseBtn').disabled     = false;
+  document.getElementById('repairBtn').disabled      = false;
 
   // Splice master and ref target
   const splN = document.getElementById('splMasterName');
@@ -1209,7 +1439,7 @@ function readWavMeta(arrayBuffer, filename) {
 }
 
 function switchTab(tab) {
-  ['analyse','master','splice','heal','bridge','dejinx','refmatch'].forEach(t => {
+  ['analyse','master','splice','heal','bridge','dejinx','repair','refmatch'].forEach(t => {
     const T = t.charAt(0).toUpperCase()+t.slice(1);
     document.getElementById('tab'+T).classList.toggle('active', t===tab);
     document.getElementById('panel'+T).classList.toggle('active', t===tab);
@@ -1355,17 +1585,21 @@ function applyRecommendations() {
   const rec = window._lastAnalysis;
   if (!rec) return;
 
-  const presenceGain    = rec.presence_gain    !== undefined ? rec.presence_gain    : 0.25;
-  const deessThreshold  = rec.deess_threshold  !== undefined ? rec.deess_threshold  : -2;
-  const vocalBoost      = rec.vocal_boost_db   !== undefined ? rec.vocal_boost_db   : 0;
-  const macroTarget     = rec.macro_target_db  !== undefined ? rec.macro_target_db  : 3.5;
+  // Settings live under rec.recommended
+  const r = (rec.recommended !== undefined ? rec.recommended : rec) || {};
+
+  const presenceGain    = r.presence_gain    !== undefined ? r.presence_gain    : 0.25;
+  const deessThreshold  = r.deess_threshold  !== undefined ? r.deess_threshold  : -2;
+  const vocalBoost      = r.vocal_boost_db   !== undefined ? r.vocal_boost_db   : 0;
+  const macroTarget     = r.macro_target_db  !== undefined ? r.macro_target_db  : 0;
+  const bassSide        = r.bass_side_mix    !== undefined ? r.bass_side_mix    : 0.15;
 
   // Width slider
   const slider = document.getElementById('widthSlider');
   slider.value = presenceGain;
   updateWidthLabel(presenceGain);
 
-  // De-esser — only set if non-trivial, open Advanced panel if so
+  // De-esser
   const deessSlider = document.getElementById('deessSlider');
   const dt = Math.round(deessThreshold);
   deessSlider.value = dt;
@@ -1382,6 +1616,10 @@ function applyRecommendations() {
   const macroSlider = document.getElementById('macroSlider');
   macroSlider.value = macroTarget;
   document.getElementById('macroVal').textContent = macroTarget === 0 ? 'Off' : `${macroTarget} dB`;
+
+  // Sub-bass side mix (Expert panel)
+  document.getElementById('bassSideSlider').value = bassSide;
+  document.getElementById('bassSideVal').textContent = Math.round(bassSide * 100) + '%';
 
   // Transfer file to all tabs without switching away from Master
   if (analyseFileObj) setSharedFile(analyseFileObj, true);
@@ -1404,7 +1642,7 @@ function applyRecommendations() {
   const wDb    = (20 * Math.log10(presenceGain + 1)).toFixed(1);
   const wLabel = presenceGain === 0 ? '0 dB' : `+${wDb} dB`;
   statusTxt.textContent =
-    `✓ Settings applied — width ${wLabel}  ·  de-esser ${labels[String(dt)] || dt}  ·  vocal +${vb}dB` +
+    `✓ Settings applied — width ${wLabel}  ·  de-esser ${labels[String(dt)] || dt}  ·  vocal +${vocalBoost}dB` +
     (analyseFileObj ? `  ·  ${analyseFileObj.name}` : '');
   setTimeout(() => statusBar.classList.remove('visible'), 5000);
 }
@@ -1802,6 +2040,8 @@ function resetExpertDefaults() {
     satDriveSlider:  6,    satMixSlider:   0.15,
     compThreshSlider:-18,  compRatioSlider: 2,
     transientSlider: 2.5,  dyneqSlider:    3,
+    bassSideSlider:  0.15,
+    hishelfSlider:  -99,
   };
   Object.entries(defaults).forEach(([id, val]) => {
     document.getElementById(id).value = val;
@@ -1936,6 +2176,9 @@ async function runMaster(profile) {
     form.append('comp_ratio',     document.getElementById('compRatioSlider').value);
     form.append('transient_boost',document.getElementById('transientSlider').value);
     form.append('dyneq_max_cut',  document.getElementById('dyneqSlider').value);
+    form.append('bass_side_mix',  document.getElementById('bassSideSlider').value);
+    const hishelfRaw = parseFloat(document.getElementById('hishelfSlider').value);
+    form.append('hishelf_threshold', hishelfRaw <= -38 ? -99 : hishelfRaw);
   }
 
   try {
@@ -1968,6 +2211,7 @@ async function runMaster(profile) {
 
     document.getElementById(rowId).style.display = 'flex';
     const dl = document.getElementById(dlId);
+    dl.dataset.filename = data.output;
     dl.onclick = () => window.location.href = `${SERVER}/download?file=${encodeURIComponent(data.output)}`;
     document.getElementById('masterReset').style.display = 'flex';
     document.getElementById('masterBtn').disabled = false;
@@ -2468,6 +2712,126 @@ function stopConsolePoll() {
 }
 
 
+// ══════════════════════════════════════════════════════════
+//  REPAIR TAB
+// ══════════════════════════════════════════════════════════
+let repairFileObj = null;
+let repairMethod  = 'phase';
+
+// Check Demucs availability on load
+async function checkRepairStatus() {
+  try {
+    const r = await fetch(`${SERVER}/repair_status`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const el = document.getElementById('repairDemucsStatus');
+    const stemBtn = document.getElementById('methodStem');
+    el.style.display = 'block';
+    if (d.demucs_available) {
+      el.style.background = 'rgba(29,185,84,0.08)';
+      el.style.border     = '1px solid rgba(29,185,84,0.3)';
+      el.style.color      = 'var(--green)';
+      el.textContent      = '✓ Demucs available — stem repair enabled';
+      stemBtn.disabled    = false;
+    } else {
+      el.style.background = 'rgba(255,255,255,0.04)';
+      el.style.border     = '1px solid var(--border)';
+      el.style.color      = 'var(--muted)';
+      el.textContent      = '○ Demucs not installed — phase repair only  (pip install demucs to enable stem repair)';
+    }
+  } catch(_) {}
+}
+
+function setRepairMethod(m) {
+  repairMethod = m;
+  document.getElementById('methodPhase').classList.toggle('active', m==='phase');
+  document.getElementById('methodStem').classList.toggle('active',  m==='stem');
+  const descs = {
+    phase: 'Reconstructs the stereo side channel in corrupted zones using context from flanking clean sections. No additional dependencies required.',
+    stem:  'Separates the track into vocals and accompaniment using Demucs, repairs each stem independently, then recombines. Better results on severely corrupted files.'
+  };
+  document.getElementById('repairMethodDesc').textContent = descs[m];
+}
+
+// Drop zone wiring
+initDrop('repairDrop', 'repairFile', 'repairFileName', (file) => {
+  repairFileObj = file;
+  document.getElementById('repairBtn').disabled = false;
+  document.getElementById('repairDownloadRow').style.display = 'none';
+  document.getElementById('repairZoneList').style.display = 'none';
+  document.getElementById('repairReset').style.display = 'none';
+  document.getElementById('repairStatus').classList.remove('visible');
+  setSharedFile(file, true);
+});
+
+// Main repair button
+document.getElementById('repairBtn').addEventListener('click', async () => {
+  if (!repairFileObj || !await checkServer()) return;
+  document.getElementById('repairBtn').disabled = true;
+  document.getElementById('repairDownloadRow').style.display = 'none';
+  document.getElementById('repairZoneList').style.display = 'none';
+
+  setStatus('repairStatus','repairProgress','repairStatusText','busy',
+    repairMethod === 'stem' ? 'Separating stems (this may take a minute)…' : 'Scanning for corruption zones…');
+
+  const form = new FormData();
+  form.append('file',   repairFileObj);
+  form.append('method', repairMethod);
+
+  try {
+    const res = await fetch(`${SERVER}/repair`, {method:'POST', body:form});
+    if (!res.ok) throw new Error((await res.json()).error || `Error ${res.status}`);
+    const data = await res.json();
+    const count = (data.repairs || []).length;
+
+    const msg = count === 0
+      ? '✓ Scan complete — no corruption zones found'
+      : `✓ Repaired ${count} zone${count>1?'s':''}  (${data.method} repair)`;
+    setStatus('repairStatus','repairProgress','repairStatusText','success', msg);
+
+    // Render zone list
+    const listEl = document.getElementById('repairZoneList');
+    if (count > 0) {
+      listEl.style.display = 'flex';
+      listEl.innerHTML = (data.repairs||[]).map((r,i) => `
+        <div style="display:grid;grid-template-columns:auto 1fr auto auto auto;gap:0 0.6rem;
+             align-items:center;padding:0.3rem 0.5rem;background:var(--surface2);
+             border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:0.7rem;">
+          <span style="color:var(--green);font-weight:600">#${i+1}</span>
+          <span style="color:var(--text)">at ${r.time_display}</span>
+          <span style="color:var(--muted)">${r.duration_ms} ms</span>
+          <span style="color:var(--muted);font-size:0.62rem">${r.method}</span>
+        </div>`).join('');
+    }
+
+    document.getElementById('repairDownloadRow').style.display = 'flex';
+    document.getElementById('repairDownload').dataset.filename = data.output;
+    document.getElementById('repairDownload').onclick =
+      () => window.location.href = `${SERVER}/download?file=${encodeURIComponent(data.output)}`;
+    document.getElementById('repairReset').style.display = 'flex';
+    document.getElementById('repairBtn').disabled = false;
+
+  } catch(err) {
+    setStatus('repairStatus','repairProgress','repairStatusText','error', `✗ ${err.message}`);
+    document.getElementById('repairBtn').disabled = false;
+  }
+});
+
+// Reset
+document.getElementById('repairReset').addEventListener('click', () => {
+  repairFileObj = null;
+  document.getElementById('repairFileName').textContent = '';
+  document.getElementById('repairDrop').classList.remove('has-file');
+  document.getElementById('repairBtn').disabled = true;
+  document.getElementById('repairDownloadRow').style.display = 'none';
+  document.getElementById('repairZoneList').style.display = 'none';
+  document.getElementById('repairZoneList').innerHTML = '';
+  document.getElementById('repairReset').style.display = 'none';
+  document.getElementById('repairStatus').classList.remove('visible');
+});
+
+// Check Demucs status when repair tab is selected
+checkRepairStatus();
 </script>
 </body>
 </html>

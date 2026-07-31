@@ -1,0 +1,87 @@
+<svg width="512" height="512" viewBox="0 0 680 420" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>StreamMaster logo</title>
+<desc>StreamMaster logo with mM as a flowing audio waveform inside a technical ring</desc>
+
+<defs>
+  <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%"   stop-color="#1DB954"/>
+    <stop offset="50%"  stop-color="#00C8FF"/>
+    <stop offset="100%" stop-color="#1DB954"/>
+  </linearGradient>
+  <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%"   stop-color="#1DB954"/>
+    <stop offset="100%" stop-color="#00C8FF"/>
+  </linearGradient>
+  <linearGradient id="ringGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+    <stop offset="0%"   stop-color="#3a3a4a"/>
+    <stop offset="50%"  stop-color="#5a5a6e"/>
+    <stop offset="100%" stop-color="#2a2a38"/>
+  </linearGradient>
+  <filter id="glow">
+    <feGaussianBlur stdDeviation="3" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <clipPath id="circleClip">
+    <circle cx="340" cy="210" r="142"/>
+  </clipPath>
+</defs>
+
+<rect width="680" height="420" fill="#0d1117" rx="12"/>
+
+<!-- Outer ring -->
+<circle cx="340" cy="210" r="155" fill="none" stroke="url(#ringGrad)" stroke-width="14"/>
+<!-- Ring notches -->
+<line x1="340" y1="43"  x2="340" y2="57"  stroke="#00C8FF" stroke-width="3" opacity="0.7"/>
+<line x1="340" y1="363" x2="340" y2="377" stroke="#00C8FF" stroke-width="3" opacity="0.7"/>
+<line x1="173" y1="210" x2="187" y2="210" stroke="#00C8FF" stroke-width="3" opacity="0.7"/>
+<line x1="493" y1="210" x2="507" y2="210" stroke="#00C8FF" stroke-width="3" opacity="0.7"/>
+<!-- Inner ring accent -->
+<circle cx="340" cy="210" r="146" fill="none" stroke="#1DB954" stroke-width="1" opacity="0.4"/>
+
+<!-- Strea -->
+<text x="178" y="232"
+  font-family="'Arial Black','Arial',sans-serif"
+  font-size="58" font-weight="900"
+  text-anchor="end"
+  fill="url(#textGrad)">Strea</text>
+
+<!-- aster -->
+<text x="502" y="232"
+  font-family="'Arial Black','Arial',sans-serif"
+  font-size="58" font-weight="900"
+  text-anchor="start"
+  fill="url(#textGrad)">aster</text>
+
+<!-- mM waveform -->
+<path
+  d="M 205,272
+     C 205,272 205,185 225,172
+     C 245,159 255,185 268,228
+     C 281,185 291,159 311,172
+     C 331,185 331,228 340,228
+     C 349,228 349,148 369,138
+     C 389,128 395,175 408,228
+     C 421,175 427,128 447,138
+     C 467,148 467,272 475,272"
+  fill="none"
+  stroke="url(#waveGrad)"
+  stroke-width="11"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  filter="url(#glow)"
+  clip-path="url(#circleClip)"
+/>
+
+<!-- Baseline -->
+<line x1="200" y1="272" x2="480" y2="272"
+  stroke="#1DB954" stroke-width="1.5" opacity="0.35"
+  clip-path="url(#circleClip)"/>
+
+<!-- M peak detail lines -->
+<line x1="408" y1="148" x2="408" y2="272"
+  stroke="#00C8FF" stroke-width="2" opacity="0.4"
+  clip-path="url(#circleClip)"/>
+<line x1="369" y1="138" x2="369" y2="272"
+  stroke="#00C8FF" stroke-width="2" opacity="0.4"
+  clip-path="url(#circleClip)"/>
+</svg>

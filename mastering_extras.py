@@ -227,13 +227,14 @@ def multiband_compress(audio: np.ndarray, sr: int,
 # ══════════════════════════════════════════════════════════════════════════════
 
 def de_ess(audio: np.ndarray, sr: int,
-           freq_lo: float = 5000,
-           freq_hi: float = 10000,
+           freq_lo: float = 4000,
+           freq_hi: float = 12000,
            threshold_db: float = 4.0,
            ratio: float = 8.0,
-           max_cut_db: float = 12.0,
-           attack_ms: float = 1.0,
+           max_cut_db: float = 14.0,
+           attack_ms: float = 0.5,
            release_ms: float = 60.0,
+           lookahead_ms: float = 1.5,
            mode: str = 'auto') -> np.ndarray:
     """
     Band-split de-esser.
@@ -299,6 +300,11 @@ def de_ess(audio: np.ndarray, sr: int,
     n_hops = (n + hop - 1) // hop
     padded = np.pad(det_sig**2, (0, n_hops*hop - n))
     env    = np.sqrt(np.mean(padded.reshape(n_hops, hop), axis=1) + 1e-24)
+
+    # Lookahead — shift envelope forward so gain reduction anticipates peaks
+    lookahead_hops = max(1, int(lookahead_ms * 1e-3 * sr / hop))
+    env = np.roll(env, -lookahead_hops)
+    env[-lookahead_hops:] = env[-lookahead_hops-1]
 
     p90_db        = 20 * np.log10(np.percentile(env, 90) + 1e-12)
     abs_thresh_db = p90_db + threshold_db
@@ -471,6 +477,79 @@ def _de_ess_mono(audio, sr, freq_lo, freq_hi, threshold_db, ratio,
 #  exceeds a threshold.  Leaves the band alone in quieter passages so the
 #  cut doesn't dull the track globally.
 # ══════════════════════════════════════════════════════════════════════════════
+
+def dynamic_highshelf(audio: np.ndarray, sr: int,
+                      freq: float = 5000,
+                      threshold_db: float = -28.0,
+                      ratio: float = 3.0,
+                      attack_ms: float = 1.0,
+                      release_ms: float = 80.0,
+                      max_cut_db: float = 8.0,
+                      lookahead_ms: float = 1.5) -> np.ndarray:
+    """
+    Dynamic high-shelf compressor.
+
+    When energy above `freq` exceeds `threshold_db`, applies a gain reduction
+    to everything above `freq`. More musical than a narrowband de-esser for
+    tracks where harshness is spread across a wide high-frequency range
+    rather than concentrated at a single sibilance frequency.
+
+    Operates on the full stereo signal (L and R together), preserving the
+    stereo balance. Low-frequency content below `freq` is completely untouched.
+
+    threshold_db <= -99 = bypass.
+    """
+    if threshold_db <= -99:
+        print(f"  Hi-shelf dyn: Off (bypassed)")
+        return audio
+
+    n = len(audio)
+    sos_hi = _butter_sos(freq, sr, btype='high', order=4)
+    sos_lo = _butter_sos(freq, sr, btype='low',  order=4)
+    hi = _apply_sos(sos_hi, audio)
+    lo = _apply_sos(sos_lo, audio)
+
+    # Detection on mono high-shelf content
+    det = hi.mean(axis=1)
+    hop    = max(1, int(attack_ms * 1e-3 * sr))
+    n_hops = (n + hop - 1) // hop
+    env    = np.sqrt(np.mean(
+        np.pad(det**2, (0, n_hops*hop-n)).reshape(n_hops, hop), axis=1) + 1e-24)
+
+    # Lookahead — anticipate peaks before they arrive
+    la_hops = max(1, int(lookahead_ms * 1e-3 * sr / hop))
+    env = np.roll(env, -la_hops)
+    env[-la_hops:] = env[-la_hops-1]
+
+    thresh  = 10 ** (threshold_db / 20)
+    max_cut = 10 ** (-max_cut_db   / 20)
+    a_att   = np.exp(-1.0 / max(1, attack_ms  * 1e-3 * sr / hop))
+    a_rel   = np.exp(-1.0 / max(1, release_ms * 1e-3 * sr / hop))
+    e_att   = signal.lfilter([1-a_att], [1,-a_att], env)
+    e_rel   = signal.lfilter([1-a_rel], [1,-a_rel], e_att)
+    e       = np.maximum(e_att, e_rel)
+
+    gain_hops = np.where(
+        e > thresh,
+        np.maximum(
+            thresh * (e / (thresh + 1e-24)) ** (1.0 / ratio) / (e + 1e-24),
+            max_cut
+        ),
+        1.0
+    )
+    gain_hops = gaussian_filter1d(gain_hops, sigma=2)
+    gain = np.interp(np.arange(n), np.arange(n_hops)*hop + hop//2, gain_hops)
+
+    active_pct = float((gain_hops < 0.99).mean() * 100)
+    avg_cut_db = float(20*np.log10(gain_hops[gain_hops < 0.99].mean()+1e-12)) \
+                 if (gain_hops < 0.99).any() else 0.0
+
+    print(f"  Hi-shelf dyn: >{freq//1000}kHz  {ratio:.1f}:1  "
+          f"thresh {threshold_db:.0f}dBRMS  "
+          f"active {active_pct:.1f}%  avg {avg_cut_db:.1f}dB")
+
+    return lo + hi * gain[:, np.newaxis]
+
 
 def dynamic_eq(audio: np.ndarray, sr: int,
                freq_lo: float = 2000, freq_hi: float = 4000,

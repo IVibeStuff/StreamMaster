@@ -1,111 +1,29 @@
-# Spotify Master Tool — Setup Guide
+# StreamMaster — Setup Guide
 
 ## Requirements
-
-| | |
-|---|---|
-| **OS** | Windows 10 or Windows 11 (64-bit) |
-| **Python** | 3.10 or later |
-| **RAM** | 4 GB minimum, 8 GB recommended |
-| **Disk** | ~500 MB (Python packages) |
-| **Internet** | Required on first run only (package download) |
-
----
+- Python 3.10 or later
+- Windows 10/11, macOS, or Linux
+- ~500 MB disk (packages) + ~4 GB if installing Demucs (optional)
 
 ## Step 1 — Install Python
+Download from https://www.python.org/downloads/
+**Tick "Add Python to PATH"** before clicking Install.
 
-1. Go to **https://www.python.org/downloads/**
-2. Download the latest Python 3.x release
-3. Run the installer
-4. **Important:** tick **"Add Python to PATH"** before clicking Install
+## Step 2 — Run the launcher
+**Windows:** double-click `Launch.bat`
+**macOS/Linux:** `chmod +x launch.sh && ./launch.sh`
 
-To verify: open Command Prompt and type `python --version`
+First run installs packages automatically (~30 seconds).
+Browser opens to http://localhost:5051
 
----
-
-## Step 2 — Install the Tool
-
-1. Unzip `SpotifyMaster.zip` to any folder  
-   e.g. `C:\Users\YourName\SpotifyMaster\`
-
-2. The folder should contain:
-
+## Optional — Stem repair (Demucs)
+Unlocks the Stem Repair mode in the Repair tab.
+Requires ~4 GB disk and a GPU for fast processing (CPU works but is slow).
 ```
-SpotifyMaster\
-├── Launch.bat              ← start here
-├── index.html
-├── server.py
-├── spotify_master.py
-├── mastering_extras.py
-├── vocalride.py
-├── analyser.py
-├── dejinx.py
-├── qc.py
-├── splice.py
-├── heal.py
-├── levelbridge.py
-└── README.md
+pip install demucs
 ```
-
----
-
-## Step 3 — First Launch
-
-1. Double-click **Launch.bat**
-2. A terminal window opens and installs packages (one-time, ~30 seconds):
-   ```
-   Installing: flask, flask-cors, pyloudnorm, soundfile, scipy, numpy, matchering
-   ```
-3. Your browser opens automatically to **http://localhost:5051**
-
-> If the browser does not open, navigate to http://localhost:5051 manually.
-
----
-
-## Step 4 — Stopping the Tool
-
-Close the terminal window that opened with Launch.bat.
-
----
 
 ## Troubleshooting
-
-**"Python not found"**  
-Re-run the Python installer and make sure "Add Python to PATH" is ticked.  
-Then restart the terminal.
-
-**"Failed to install packages"**  
-Right-click Launch.bat → Run as Administrator.
-
-**Browser shows "This site can't be reached"**  
-The server may still be starting. Wait 5 seconds and refresh.  
-If it persists, check the terminal window for error messages.
-
-**Port 5051 already in use**  
-Another application is using the port. Open `server.py` in Notepad,  
-find `port=5051` near the bottom, and change it to `5052` (or any free port).  
-Update the URL in your browser to match.
-
----
-
-## Updating
-
-To update to a newer version:
-
-1. Stop the tool (close the terminal)
-2. Replace all `.py` files and `index.html` with the new versions
-3. Keep your existing `Launch.bat` — it does not need updating
-
----
-
-## Packages Installed
-
-| Package | Purpose |
-|---|---|
-| `flask` | Local web server |
-| `flask-cors` | Browser security |
-| `pyloudnorm` | LUFS measurement |
-| `soundfile` | WAV read/write |
-| `scipy` | Signal processing |
-| `numpy` | Audio math |
-| `matchering` | Reference track matching |
+**Python not found:** re-run installer, tick "Add Python to PATH", restart terminal.
+**Package install fails:** right-click launcher → Run as Administrator.
+**Port 5051 in use:** edit server.py, change port=5051 to port=5052.

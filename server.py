@@ -28,6 +28,10 @@ from mastering_extras import reference_match
 from analyser import analyse
 from qc import qc_check
 from repair import repair_boundaries, find_corruption_zones, _demucs_available
+from stem_master import stem_master, STEM_DEFAULTS
+from previewer import generate_variants, regenerate_clips
+from history import add_entry, get_grouped, clear_all
+from updater import check_for_updates_background, get_update_state, apply_update
 
 app = Flask(__name__)
 CORS(app)
@@ -142,6 +146,28 @@ def master_route():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+    # Record to history
+    try:
+        settings_record = dict(
+            presence_gain=presence_gain, deess_threshold=deess_threshold,
+            vocal_boost_db=vocal_boost_db, macro_target_db=macro_target_db,
+            eq_shelf_db=eq_shelf_db, eq_mud_db=eq_mud_db,
+            air_blend=air_blend, dehaze_depth=dehaze_depth,
+            sat_drive_db=sat_drive_db, sat_mix=sat_mix,
+            comp_threshold=comp_threshold, comp_ratio=comp_ratio,
+            transient_boost=transient_boost, dyneq_max_cut=dyneq_max_cut,
+            bass_side_mix=bass_side_mix, hishelf_threshold=hishelf_threshold,
+            profile=profile,
+        )
+        add_entry(
+            source_file  = f.filename,
+            output_files = [output_name],
+            settings     = settings_record,
+            qc           = qc,
+        )
+    except Exception:
+        pass  # never fail a master export due to history write error
+
     return jsonify({"status": "ok", "output": output_name, "qc": qc})
 
 
@@ -190,10 +216,13 @@ def analyse_route():
     f = request.files["file"]
     if not f.filename.lower().endswith(".wav"):
         return jsonify({"error": "Only WAV files supported"}), 400
+    original_name = f.filename
     input_path = UPLOAD_DIR / "analyse_input.wav"
     f.save(str(input_path))
     try:
         result = analyse(str(input_path))
+        # Override the filename in the result with the original name
+        result['file'] = original_name
         return jsonify(result)
     except Exception as e:
         import traceback
@@ -268,6 +297,311 @@ def dejinx_route():
                 })
 
     return jsonify({"status": "ok", "output": output_name, "repairs": repairs})
+
+
+@app.route("/preview", methods=["POST"])
+def preview_route():
+    """
+    Generate four preview clip variants, streaming progress via SSE.
+    Each variant emits a JSON event as it completes so the UI can
+    show cards becoming playable one by one rather than all at once.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file"}), 400
+    f = request.files["file"]
+    if not f.filename.lower().endswith(".wav"):
+        return jsonify({"error": "WAV only"}), 400
+
+    import json as _json
+    recommended = {}
+    if "recommended" in request.form:
+        try:
+            recommended = _json.loads(request.form["recommended"])
+        except Exception:
+            pass
+
+    input_path = UPLOAD_DIR / "preview_input.wav"
+    f.save(str(input_path))
+
+    preview_dir = UPLOAD_DIR / "previews"
+    preview_dir.mkdir(exist_ok=True)
+
+    # Clear all previous preview files
+    for old_file in preview_dir.glob("*.wav"):
+        try: old_file.unlink()
+        except Exception: pass
+
+    def generate():
+        """Generator that yields SSE events as each variant completes."""
+        import soundfile as sf
+        import numpy as np
+        from previewer import (find_preview_window, extract_clip,
+                               waveform_data, _normalise_to_lufs,
+                               _true_peak_limit, CLIP_DURATION)
+        from spotify_master import master as run_master
+
+        audio, sr = sf.read(str(input_path), always_2d=True)
+        audio     = audio.astype(np.float64)
+        track_dur = len(audio) / sr
+
+        # Auto window
+        start_s = find_preview_window(audio, sr, CLIP_DURATION)
+
+        # Waveform data
+        wf = waveform_data(audio, sr)
+
+        # Emit initial metadata
+        meta = _json.dumps({
+            "type":           "meta",
+            "waveform":       wf,
+            "window_start":   start_s,
+            "window_end":     min(start_s + CLIP_DURATION, track_dur),
+            "clip_duration":  CLIP_DURATION,
+            "track_duration": round(track_dur, 2),
+        })
+        yield f"data: {meta}\n\n"
+
+        rec      = recommended
+        tmp_wav  = preview_dir / "_tmp.wav"
+        proc_sr  = 44100
+
+        def _run(profile, **kwargs):
+            run_master(str(input_path), str(tmp_wav), profile=profile, **kwargs)
+            a, s = sf.read(str(tmp_wav), always_2d=True)
+            return a.astype(np.float64), s
+
+        # Resample raw to 44100
+        raw_audio = audio.copy()
+        if sr != 44100:
+            from scipy.signal import resample_poly
+            import math
+            def gcd(a,b): return a if b==0 else gcd(b,a%b)
+            g = gcd(44100, sr)
+            up, dn = 44100//g, sr//g
+            raw_audio = np.stack([
+                resample_poly(raw_audio[:,c], up, dn)
+                for c in range(raw_audio.shape[1])], axis=1)
+
+        VARIANTS = [
+            ("raw", "Raw", "Unprocessed — LUFS normalised only",
+             None),
+            ("optimised", "Optimised", "Full chain — analyser-recommended settings",
+             dict(presence_gain=rec.get('presence_gain',0.25),
+                  deess_threshold=rec.get('deess_threshold',-2.0),
+                  vocal_boost_db=rec.get('vocal_boost_db',0.0),
+                  macro_target_db=rec.get('macro_target_db',0.0),
+                  eq_shelf_db=rec.get('eq_shelf_db',1.5),
+                  eq_mud_db=rec.get('eq_mud_db',-2.0),
+                  bass_side_mix=rec.get('bass_side_mix',0.15),
+                  transient_boost=rec.get('transient_boost',2.5),
+                  comp_threshold=rec.get('comp_threshold',-18.0),
+                  comp_ratio=rec.get('comp_ratio',2.0),
+                  sat_mix=rec.get('sat_mix',0.15),
+                  hishelf_threshold=rec.get('hishelf_threshold',-99.0))),
+            ("vocal", "Vocal Forward",
+             "More presence and width — vocal sits further forward",
+             dict(presence_gain=min(0.5,rec.get('presence_gain',0.25)+0.15),
+                  deess_threshold=max(rec.get('deess_threshold',3.0),3.0),
+                  vocal_boost_db=rec.get('vocal_boost_db',0.0),
+                  macro_target_db=rec.get('macro_target_db',0.0),
+                  eq_shelf_db=min(3.0,rec.get('eq_shelf_db',1.5)+0.5),
+                  eq_mud_db=min(-1.0,rec.get('eq_mud_db',-2.0)-0.5),
+                  bass_side_mix=rec.get('bass_side_mix',0.15),
+                  transient_boost=rec.get('transient_boost',2.5),
+                  comp_threshold=rec.get('comp_threshold',-18.0),
+                  comp_ratio=rec.get('comp_ratio',2.0),
+                  sat_mix=rec.get('sat_mix',0.15),
+                  hishelf_threshold=rec.get('hishelf_threshold',-99.0))),
+            ("character", "Preserve Character",
+             "Minimal processing — Suno's original sound, streaming-ready",
+             dict(presence_gain=0.0, deess_threshold=-2.0, vocal_boost_db=0.0,
+                  macro_target_db=0.0, eq_shelf_db=0.0, eq_mud_db=0.0,
+                  air_blend=0.0, dehaze_depth=0.0, bass_side_mix=1.0,
+                  sat_mix=0.0, transient_boost=0.0, comp_threshold=-6.0,
+                  hishelf_threshold=-99.0)),
+        ]
+
+        for key, label, desc, kwargs in VARIANTS:
+            try:
+                if key == "raw":
+                    full = _normalise_to_lufs(raw_audio.copy(), 44100)
+                    full = _true_peak_limit(full)
+                    psr  = 44100
+                else:
+                    full, psr = _run('streaming', **kwargs)
+
+                # Save full for regeneration
+                sf.write(str(preview_dir / f"full_{key}.wav"), full, psr, subtype='PCM_16')
+
+                # Extract and save clip
+                clip = extract_clip(full, psr, start_s, CLIP_DURATION)
+                clip_fname = f"preview_{key}.wav"
+                sf.write(str(preview_dir / clip_fname), clip, psr, subtype='PCM_16')
+
+                evt = _json.dumps({
+                    "type":  "variant",
+                    "key":   key,
+                    "label": label,
+                    "description": desc,
+                    "file":  clip_fname,
+                })
+                yield f"data: {evt}\n\n"
+
+            except Exception as e:
+                yield f"data: {_json.dumps({'type':'error','key':key,'message':str(e)})}\n\n"
+
+        yield f"data: {_json.dumps({'type':'done'})}\n\n"
+        if tmp_wav.exists():
+            try: tmp_wav.unlink()
+            except Exception: pass
+
+    from flask import Response
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache",
+                             "X-Accel-Buffering": "no"})
+
+
+@app.route("/preview_clip")
+def preview_clip_route():
+    """Serve a preview clip WAV file."""
+    fname = request.args.get("file", "")
+    if not fname or "/" in fname or "\\" in fname:
+        return "Invalid filename", 400
+    path = UPLOAD_DIR / "previews" / fname
+    if not path.exists():
+        return "Not found", 404
+    from flask import send_file, make_response
+    response = make_response(send_file(str(path), mimetype="audio/wav"))
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    return response
+
+
+@app.route("/preview_regen", methods=["POST"])
+def preview_regen_route():
+    """Re-extract clips at a new window position (fast — no re-mastering)."""
+    start_s = float(request.form.get("start_s", 0))
+    import json as _json
+    recommended = {}
+    if "recommended" in request.form:
+        try:
+            recommended = _json.loads(request.form["recommended"])
+        except Exception:
+            pass
+
+    input_path  = UPLOAD_DIR / "preview_input.wav"
+    preview_dir = UPLOAD_DIR / "previews"
+
+    if not input_path.exists():
+        return jsonify({"error": "No preview input file — run analysis first"}), 400
+
+    try:
+        result = regenerate_clips(
+            str(input_path), recommended, str(preview_dir), start_s=start_s
+        )
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+
+
+@app.route("/check_update")
+def check_update_route():
+    """Return current update check state."""
+    return jsonify(get_update_state())
+
+
+@app.route("/apply_update", methods=["POST"])
+def apply_update_route():
+    """Download the update, stage it, and schedule a restart."""
+    state = get_update_state()
+    if not state.get('update_available'):
+        return jsonify({"error": "No update available"}), 400
+    if not state.get('asset_url'):
+        return jsonify({"error": "No download asset found — visit GitHub to update manually",
+                        "release_url": state.get('release_url')}), 400
+    try:
+        result = apply_update(state['asset_url'], state['asset_name'])
+        # Schedule restart after response is sent
+        def _restart():
+            import time, subprocess
+            time.sleep(1.5)
+            subprocess.Popen(
+                ['cmd', '/c', result['bat_path']],
+                creationflags=0x00000008,  # DETACHED_PROCESS
+                close_fds=True
+            )
+            os._exit(0)
+        threading.Thread(target=_restart, daemon=True).start()
+        return jsonify({"status": "restart_pending"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/history")
+def history_route():
+    """Return all history entries grouped by source file."""
+    return jsonify(get_grouped())
+
+
+@app.route("/history/clear", methods=["POST"])
+def history_clear_route():
+    """Clear all history entries."""
+    clear_all()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/stem_defaults")
+def stem_defaults_route():
+    return jsonify(STEM_DEFAULTS)
+
+
+@app.route("/stem_master", methods=["POST"])
+def stem_master_route():
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    f = request.files["file"]
+    if not f.filename.lower().endswith(".wav"):
+        return jsonify({"error": "Only WAV files supported"}), 400
+    if not _demucs_available():
+        return jsonify({"error": "Demucs not installed. Run: pip install demucs"}), 400
+
+    original_stem = Path(f.filename).stem
+    profile       = request.form.get("profile", "streaming")
+    profile_tag   = "_local" if profile == "local" else "_streaming"
+    output_name   = f"{original_stem}_stemmaster{profile_tag}.wav"
+    input_path    = UPLOAD_DIR / "stemmaster_input.wav"
+    output_path   = UPLOAD_DIR / output_name
+    f.save(str(input_path))
+
+    # Parse per-stem settings from form
+    import json as _json
+    stem_settings = {}
+    for stem_name in ['vocals', 'drums', 'bass', 'other']:
+        key = f"stem_{stem_name}"
+        if key in request.form:
+            try:
+                stem_settings[stem_name] = _json.loads(request.form[key])
+            except Exception:
+                pass
+
+    _reset_log()
+    try:
+        result = stem_master(
+            str(input_path), str(output_path),
+            stem_settings=stem_settings if stem_settings else None,
+            profile=profile
+        )
+        qc = qc_check(str(output_path))
+        return jsonify({
+            "status":  "ok",
+            "output":  output_name,
+            "stems":   result.get('stems', {}),
+            "qc":      qc,
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
 
 
 @app.route("/repair_status")
@@ -407,8 +741,9 @@ def ping():
 
 if __name__ == "__main__":
     print("\n┌─────────────────────────────────────────────┐")
-    print("│  StreamMaster v1.2  —  localhost:5051         │")
+    print("│  StreamMaster v2.0  —  localhost:5051         │")
     print("└─────────────────────────────────────────────┘")
     print("  Opening http://localhost:5051 in your browser…\n")
+    check_for_updates_background()
     threading.Timer(1.0, lambda: webbrowser.open("http://localhost:5051")).start()
     app.run(port=5051, debug=False)

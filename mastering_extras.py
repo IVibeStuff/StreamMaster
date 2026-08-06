@@ -278,17 +278,16 @@ def de_ess(audio: np.ndarray, sr: int,
         mode = 'mid' if lr_diff <= 2.0 else 'wideband'
         print(f"  De-esser   : auto→{mode} (L/R sibilance imbalance {lr_diff:.1f} dB)")
 
-    # ── Band split ───────────────────────────────────────────────────────────
-    # Use 4th-order Butterworth — steep enough to isolate sibilance cleanly
-    # while remaining linear-phase enough not to smear transients
-    sos_bp = _butter_sos([freq_lo, freq_hi], sr, btype='bandpass', order=4)
-    sos_lo = _butter_sos(freq_lo,             sr, btype='low',      order=4)
-    sos_hi = _butter_sos(freq_hi,             sr, btype='high',     order=4)
+    # ── Band split — complementary subtraction ───────────────────────────────
+    # Build low and high shelves only — derive bandpass as remainder.
+    # This guarantees low + sib + high = original (unity sum, no crossover boost).
+    sos_lo = _butter_sos(freq_lo, sr, btype='low',  order=4)
+    sos_hi = _butter_sos(freq_hi, sr, btype='high', order=4)
 
-    # Split into three bands: below, sibilance, above
-    sib  = _apply_sos(sos_bp, audio)   # 5–10 kHz — this is what we compress
-    low  = _apply_sos(sos_lo, audio)   # <5 kHz — completely untouched
-    high = _apply_sos(sos_hi, audio)   # >10 kHz — completely untouched
+    low  = _apply_sos(sos_lo, audio)   # <freq_lo — completely untouched
+    high = _apply_sos(sos_hi, audio)   # >freq_hi — completely untouched
+    sib  = audio - low - high          # sibilance band by complementary subtraction
+                                       # guarantees low + sib + high = original
 
     # ── Detection on sibilance band ──────────────────────────────────────────
     if mode == 'mid':
@@ -351,91 +350,6 @@ def de_ess(audio: np.ndarray, sr: int,
 
     # Recombine: compressed sibilance band + untouched low + untouched high
     return low + sib_compressed + high
-
-    if audio.shape[1] == 1:
-        return _de_ess_mono(audio, sr, freq_lo, freq_hi, threshold_db,
-                            ratio, max_cut_db, attack_ms, release_ms)
-
-    freq_hi = min(freq_hi, sr / 2 - 200)
-    n = len(audio)
-
-    # ── Auto-detect mode ─────────────────────────────────────────────────────
-    if mode == 'auto':
-        sos_det = _butter_sos([freq_lo, freq_hi], sr, btype='bandpass', order=2)
-        L_sib = _apply_sos(sos_det, audio[:, 0:1])[:,0]
-        R_sib = _apply_sos(sos_det, audio[:, 1:2])[:,0]
-        # Sample active sibilance windows (top 10% of L band level)
-        hop = max(1, int(0.05 * sr))
-        n_h = (n + hop - 1) // hop
-        pad = np.pad(L_sib**2, (0, n_h*hop-n))
-        env_L = np.sqrt(np.mean(pad.reshape(n_h,hop),axis=1)+1e-24)
-        thresh_active = np.percentile(env_L, 90)
-        active = env_L > thresh_active
-        if active.any():
-            l_sq_pad = np.pad(L_sib**2, (0, n_h*hop-n))
-            l_rms = np.sqrt(np.mean(
-                l_sq_pad.reshape(n_h, hop).mean(axis=1)[active[:n_h]]
-            ) + 1e-24)
-            r_env = np.sqrt(np.mean(np.pad(R_sib**2,(0,n_h*hop-n)).reshape(n_h,hop),axis=1)+1e-24)
-            r_rms = np.sqrt(np.mean(r_env[active[:n_h]])+1e-24)
-            lr_diff = abs(20*np.log10(l_rms+1e-12) - 20*np.log10(r_rms+1e-12))
-        else:
-            lr_diff = 0.0
-        mode = 'mid' if lr_diff <= 2.0 else 'wideband'
-        print(f"  De-esser   : auto→{mode} (L/R sibilance imbalance {lr_diff:.1f} dB)")
-
-    # ── Detection signal ─────────────────────────────────────────────────────
-    mid = (audio[:,0] + audio[:,1]) * 0.5
-    sos_det = _butter_sos([freq_lo, freq_hi], sr, btype='bandpass', order=4)
-
-    if mode == 'mid':
-        det_sig = _apply_sos(sos_det, mid[:,np.newaxis])[:,0]
-    else:
-        det_sig = _apply_sos(sos_det, audio).mean(axis=1)
-
-    # ── Envelope follower ────────────────────────────────────────────────────
-    hop    = max(1, int(attack_ms * 1e-3 * sr))
-    n_hops = (n + hop - 1) // hop
-    padded = np.pad(det_sig ** 2, (0, n_hops * hop - n))
-    env    = np.sqrt(np.mean(padded.reshape(n_hops, hop), axis=1) + 1e-24)
-
-    p90_db        = 20 * np.log10(np.percentile(env, 90) + 1e-12)
-    abs_thresh_db = p90_db + threshold_db
-    thresh        = 10 ** (abs_thresh_db / 20)
-    max_cut       = 10 ** (-max_cut_db   / 20)
-
-    a_att = np.exp(-1.0 / max(1, attack_ms  * 1e-3 * sr / hop))
-    a_rel = np.exp(-1.0 / max(1, release_ms * 1e-3 * sr / hop))
-    e_att = signal.lfilter([1-a_att],[1,-a_att], env)
-    e_rel = signal.lfilter([1-a_rel],[1,-a_rel], e_att)
-    e     = np.maximum(e_att, e_rel)
-
-    gain_hops = np.where(
-        e > thresh,
-        np.maximum(thresh*(e/(thresh+1e-24))**(1/ratio)/(e+1e-24), max_cut),
-        1.0)
-    gain_hops = gaussian_filter1d(gain_hops, sigma=2)
-    gain = np.interp(np.arange(n),
-                     np.arange(n_hops)*hop+hop//2,
-                     gain_hops)
-
-    active_pct = (gain_hops < 0.99).mean() * 100
-    avg_cut_db = 20*np.log10(gain_hops[gain_hops<0.99].mean()+1e-12) \
-                 if (gain_hops<0.99).any() else 0.0
-    print(f"  De-esser   : {mode}  {freq_lo//1000}–{freq_hi//1000} kHz  "
-          f"thresh {abs_thresh_db:.1f} dBRMS  "
-          f"{ratio:.0f}:1  max -{max_cut_db:.0f}dB  "
-          f"active {active_pct:.1f}%  avg {avg_cut_db:.1f} dB")
-
-    # ── Apply gain ───────────────────────────────────────────────────────────
-    if mode == 'mid':
-        # Reduce mid only — preserves side channel and stereo width
-        side    = (audio[:,0] - audio[:,1]) * 0.5
-        mid_out = mid * gain
-        return np.stack([mid_out + side, mid_out - side], axis=1)
-    else:
-        # Wideband — reduce L and R equally, preserves L/R balance
-        return audio * gain[:, np.newaxis]
 
 
 def _de_ess_mono(audio, sr, freq_lo, freq_hi, threshold_db, ratio,

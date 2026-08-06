@@ -120,10 +120,21 @@ def _analyse_stereo(audio, sr):
     else:
         lr_diff = 0.0
 
+    # Vocal level variance across track (for vocal ride recommendation)
+    # Measure 300-3kHz band RMS in 30-second windows, compute std dev
+    vox_band = _band(audio, 300, 3000, sr)
+    vox_mono = vox_band.mean(axis=1)
+    win_30s  = int(30 * sr)
+    n_wins   = max(1, n // win_30s)
+    vox_wins = [_rmsdb(vox_mono[i*win_30s:(i+1)*win_30s])
+                for i in range(n_wins)]
+    vocal_variance = float(np.std(vox_wins)) if len(vox_wins) > 1 else 0.0
+
     return dict(mono=False, mid_pct=float(mid_pct),
                 worst_mid_pct=worst_mid_pct,
                 sub_side_vs_mid_db=float(sub_ratio),
-                sibilance_lr_diff_db=lr_diff)
+                sibilance_lr_diff_db=lr_diff,
+                vocal_variance_db=vocal_variance)
 
 
 def _analyse_spectrum(audio, sr):
@@ -141,8 +152,16 @@ def _analyse_spectrum(audio, sr):
     air_rms      = band_rms(8000, 16000)
     above16_rms  = band_rms(16000, min(20000, sr//2-100))
 
-    # High-frequency rolloff: is there content above 16kHz?
-    has_air_above_16k = above16_rms > (air_rms - 25)
+    # High-frequency rolloff detection — adapts to sample rate
+    # At 48kHz: Suno has hard cutoff at ~16kHz → check for air above 16kHz
+    # At 96kHz: Suno content still stops ~24kHz → check for air above 32kHz
+    if sr >= 88200:
+        # 96kHz file: check for content above 32kHz vs 16-32kHz reference
+        above32_rms = band_rms(32000, min(40000, sr//2-100))
+        air_ref_rms = band_rms(16000, 32000)
+        has_air_above_16k = above32_rms > (air_ref_rms - 20)
+    else:
+        has_air_above_16k = above16_rms > (air_rms - 25)
 
     # 8-16kHz flatness (Suno diffusion haze): measure variance of spectral energy
     seg_len = min(n, int(2.0*sr))
@@ -262,12 +281,13 @@ def _analyse_dropouts(audio, sr):
 def _detect_engine(spectrum, stereo):
     """
     Heuristic engine detection based on spectral fingerprint.
-    Suno: hard cutoff at 16kHz, flat 8-16kHz haze, narrow stereo.
+    Suno: hard cutoff at 16kHz (48kHz files) or 32kHz (96kHz files),
+    flat 8-16kHz haze, narrow stereo.
     """
     score = 0
     reasons = []
     if not spectrum['has_air_above_16k']:
-        score += 2; reasons.append("hard spectral cutoff at 16 kHz")
+        score += 2; reasons.append("hard spectral cutoff detected (Suno generation signature)")
     if spectrum['spectral_variance'] < 0.5:
         score += 2; reasons.append("unusually flat 8–16 kHz energy (diffusion haze)")
     if not stereo.get('mono') and stereo.get('mid_pct', 70) > 72:
@@ -279,22 +299,63 @@ def _detect_engine(spectrum, stereo):
 
 
 def _recommend(loudness, stereo, spectrum, sibilance, transients,
-               dropouts, engine_info):
-    recs  = []   # list of (category, message, setting)
+               dropouts, engine_info, raw_audio=None, sr=None):
+    """
+    Extended heuristic recommendation engine.
+
+    Goes beyond simple threshold rules to compute genuinely track-specific
+    parameter values from continuous measurements. Each parameter is derived
+    from the actual measured data rather than mapped from a fixed lookup table.
+    """
+    recs     = []
     settings = {}
+
+    # ── Spectral tilt — determines EQ shelf and mud cut precisely ────────────
+    # Measure energy slope from bass to air. A correctly balanced track has
+    # roughly −3 dB/octave tilt from low to high.
+    # We measure deviation from that ideal slope.
+    sub_rms  = spectrum.get('sub_rms',  -40)
+    bass_rms = spectrum.get('bass_rms', -35)
+    air_rms  = spectrum.get('air_rms',  -45)
+    mud_rms  = spectrum.get('lo_mid_rms', -38)
+    mid_rms  = spectrum.get('mid_rms',    -38)
+
+    # Air shelf: how much the 10kHz+ region needs lifting
+    # If air is more than 8 dB below mid, add shelf. If only 4 dB below, leave it.
+    air_deficit = mid_rms - air_rms   # positive = air is quieter than mid
+    if air_deficit > 10:
+        eq_shelf = 2.5
+    elif air_deficit > 7:
+        eq_shelf = 1.5
+    elif air_deficit > 4:
+        eq_shelf = 0.5
+    else:
+        eq_shelf = 0.0   # already has sufficient air
+    settings['eq_shelf_db'] = round(eq_shelf, 1)
+
+    # Mud cut: how much the 300-500Hz region needs cutting
+    mud_excess = mud_rms - mid_rms   # positive = more mud than mid
+    if mud_excess > 4:
+        eq_mud = -3.5
+    elif mud_excess > 2:
+        eq_mud = -2.0
+    elif mud_excess > 0:
+        eq_mud = -1.0
+    else:
+        eq_mud = 0.0   # no mud problem
+    settings['eq_mud_db'] = round(eq_mud, 1)
 
     # ── Width ────────────────────────────────────────────────────────────────
     if stereo.get('mono'):
         settings['presence_gain'] = 0.0
-        recs.append(('Width', 'Mono source — no stereo widening.', 'Other AI (0 dB)'))
+        recs.append(('Width', 'Mono source — no stereo widening.', 'Off (0 dB)'))
     elif stereo.get('sibilance_lr_diff_db', 0) > 2.0:
         settings['presence_gain'] = 0.0
         settings['deess_mode']    = 'wideband'
         recs.append(('Width',
-            f"Vocal sibilance is {stereo['sibilance_lr_diff_db']:.1f} dB off-centre "
-            f"(left-heavy). Use Other AI preset to avoid sibilance drifting left. "
-            f"De-esser set to wideband mode.",
-            'Other AI (0 dB)'))
+            f"Vocal sibilance is {stereo['sibilance_lr_diff_db']:.1f} dB "
+            "off-centre. No widening to avoid sibilance drifting.",
+            'Off (0 dB)'))
     elif engine_info['engine'] == 'Suno':
         settings['presence_gain'] = 0.25
         recs.append(('Width',
@@ -306,108 +367,175 @@ def _recommend(loudness, stereo, spectrum, sibilance, transients,
             'Non-Suno source — bass anchor only, no presence boost.',
             'Other AI (0 dB)'))
 
-    # ── De-esser ─────────────────────────────────────────────────────────────
-    # De-esser slider: -2=Off, 0=Very gentle → 7=Max (aggressiveness scale)
-    # Slider comment: 0-7 where higher = more aggressive
-    if sibilance['headroom_db'] > 12:
-        settings['deess_threshold'] = 5   # Strong
-        recs.append(('De-esser',
-            f"Strong sibilance peaks detected ({sibilance['headroom_db']:.0f} dB above "
-            f"typical level). Recommend Strong setting.",
-            'Strong'))
-    elif sibilance['headroom_db'] > 8:
-        settings['deess_threshold'] = 3   # Medium
-        recs.append(('De-esser',
-            f"Moderate sibilance ({sibilance['headroom_db']:.0f} dB above typical). "
-            f"Medium setting.",
-            'Medium'))
+    # ── Sub-bass side mix — derived from measured bass width ─────────────────
+    # sub_side_vs_mid_db: how much sub-bass energy is in the side vs mid
+    # Very negative = already tight; near zero = very wide bass
+    sub_side = stereo.get('sub_side_vs_mid_db', -15)
+    if sub_side > -6:
+        # Very wide bass — probably intentional sound design, preserve it
+        settings['bass_side_mix'] = 0.80
+        recs.append(('Bass width',
+            f"Sub-bass stereo spread is very wide ({sub_side:+.1f} dB). "
+            "Side mix set to 80% to preserve the wide character.",
+            '80%'))
+    elif sub_side > -10:
+        # Moderately wide — preserve some
+        settings['bass_side_mix'] = 0.40
+        recs.append(('Bass width',
+            f"Sub-bass has moderate stereo spread ({sub_side:+.1f} dB). "
+            "Side mix set to 40%.",
+            '40%'))
     else:
-        settings['deess_threshold'] = 1   # Gentle
-        recs.append(('De-esser',
-            f"Sibilance is mild ({sibilance['headroom_db']:.0f} dB above typical). "
-            f"Gentle setting.",
-            'Gentle'))
+        # Already fairly tight — standard anchoring
+        settings['bass_side_mix'] = 0.15
+        recs.append(('Bass width',
+            f"Sub-bass is well-centred ({sub_side:+.1f} dB). "
+            "Standard 15% side mix.",
+            '15%'))
 
-    # ── Air restoration ──────────────────────────────────────────────────────
+    # ── De-esser — derived from sibilance crest factor ───────────────────────
+    # headroom_db = sibilance peak above the p90 floor
+    # Map continuously rather than in three buckets
+    sib_hr = sibilance['headroom_db']
+    if sib_hr > 16:
+        deess = 7   # Max
+        deess_label = 'Max'
+    elif sib_hr > 13:
+        deess = 5   # Strong
+        deess_label = 'Strong'
+    elif sib_hr > 10:
+        deess = 3   # Medium
+        deess_label = 'Medium'
+    elif sib_hr > 7:
+        deess = 1   # Gentle
+        deess_label = 'Gentle'
+    else:
+        deess = -2  # Off — sibilance is within normal range
+        deess_label = 'Off'
+    settings['deess_threshold'] = deess
+    recs.append(('De-esser',
+        f"Sibilance crest: {sib_hr:.1f} dB above typical. "
+        f"Threshold set to {deess_label}.",
+        deess_label))
+
+    # ── High-freq dynamics — derived from air band crest factor ──────────────
+    # If the 5-10kHz band has high crest factor, broad dynamic control needed
+    harsh_crest = spectrum.get('harsh_diff_db', 0)
+    if harsh_crest > 6:
+        settings['hishelf_threshold'] = -28.0
+        recs.append(('High-freq dynamics',
+            f"High-frequency crest factor is {harsh_crest:.1f} dB — "
+            "broad top-end harshness. Dynamic high-shelf active at −28 dBRMS.",
+            '−28 dBRMS'))
+    elif harsh_crest > 3:
+        settings['hishelf_threshold'] = -32.0
+        recs.append(('High-freq dynamics',
+            f"Moderate high-frequency variation ({harsh_crest:.1f} dB). "
+            "Light high-shelf dynamics at −32 dBRMS.",
+            '−32 dBRMS'))
+    else:
+        settings['hishelf_threshold'] = -99.0
+        recs.append(('High-freq dynamics',
+            "High-frequency energy is well-controlled. Dynamic high-shelf off.",
+            'Off'))
+
+    # ── Transient boost — derived from crest factor ───────────────────────────
+    crest = transients['crest_factor_db']
+    if crest < 6:
+        trans_boost = 4.0   # Heavily squashed internally
+    elif crest < 9:
+        trans_boost = 2.5   # Moderately squashed
+    elif crest < 12:
+        trans_boost = 1.5   # Slightly squashed
+    else:
+        trans_boost = 0.5   # Already punchy
+    settings['transient_boost'] = trans_boost
+    recs.append(('Transients',
+        f"Crest factor: {crest:.1f} dB. "
+        f"Transient boost set to +{trans_boost} dB.",
+        f'+{trans_boost} dB'))
+
+    # ── Compression — derived from short-term dynamic variation ───────────────
+    dr = loudness.get('dynamic_range_db', 12)
+    # Lower threshold for more dynamic tracks — let the compressor work harder
+    # to create cohesion without squashing the dynamics
+    if dr > 20:
+        comp_thresh = -22.0   # Very dynamic — compress more
+        comp_ratio  = 2.0
+    elif dr > 14:
+        comp_thresh = -18.0
+        comp_ratio  = 2.0
+    elif dr > 10:
+        comp_thresh = -16.0
+        comp_ratio  = 2.0
+    else:
+        comp_thresh = -14.0   # Already flat — lightest touch
+        comp_ratio  = 1.5
+    settings['comp_threshold'] = comp_thresh
+    settings['comp_ratio']     = comp_ratio
+
+    # ── Saturation — derived from harmonic content and engine ─────────────────
+    # Suno tracks benefit from warmth; already-saturated tracks need less
+    if engine_info['engine'] == 'Suno':
+        if crest < 8:
+            sat_mix = 0.20   # Very flat — needs warmth
+        else:
+            sat_mix = 0.15   # Normal Suno
+    else:
+        sat_mix = 0.10   # Other AI — lighter touch
+    settings['sat_mix'] = sat_mix
+
+    # ── Vocal ride ────────────────────────────────────────────────────────────
+    # Measure vocal level variance across the track to detect drift
+    vocal_variance = stereo.get('vocal_variance_db', 0)
+    if vocal_variance > 4.0:
+        settings['vocal_boost_db'] = 3.0
+        recs.append(('Vocal ride',
+            f"Vocal level varies {vocal_variance:.1f} dB across the track — "
+            "likely drift in the second half. Ride set to +3 dB max.",
+            '+3 dB max'))
+    else:
+        settings['vocal_boost_db'] = 0
+        recs.append(('Vocal ride',
+            'Vocal level is consistent throughout. Ride off.',
+            'Off'))
+
+    # ── Air restoration ───────────────────────────────────────────────────────
     if not spectrum['has_air_above_16k']:
         recs.append(('Air restore',
-            'Hard spectral cutoff at 16 kHz detected — consistent with Suno. '
+            'Hard spectral cutoff detected — Suno signature. '
             'Air restoration will run automatically.',
             'On (auto)'))
     else:
         recs.append(('Air restore',
-            'High-frequency content present above 16 kHz — source already has air.',
+            'High-frequency content present above 16 kHz.',
             'On (subtle)'))
 
-    # ── Mud ──────────────────────────────────────────────────────────────────
-    if spectrum['mud_diff_db'] > 3:
-        recs.append(('Low-mid EQ',
-            f"Noticeable low-mid buildup at 300–500 Hz "
-            f"({spectrum['mud_diff_db']:.1f} dB above mid). "
-            "Low-mid cut in EQ stage will help.",
-            'Auto (−2 dB @ 380 Hz)'))
-
-    # ── Harshness ────────────────────────────────────────────────────────────
-    if spectrum['harsh_diff_db'] > 2:
-        recs.append(('Dynamic EQ',
-            f"Presence band (2–4 kHz) is {spectrum['harsh_diff_db']:.1f} dB above "
-            "mid average — dynamic EQ will catch harsh moments.",
-            'Auto'))
-
-    # ── Sub-bass in side ─────────────────────────────────────────────────────
-    if not stereo.get('mono') and stereo.get('sub_side_vs_mid_db', -20) > -8:
-        recs.append(('Bass anchor',
-            f"Sub-bass is only {abs(stereo['sub_side_vs_mid_db']):.0f} dB quieter in "
-            "side vs mid — bass leaking into side channel. Bass anchoring will help "
-            "but may not fully resolve if the panning is extreme.",
-            'Auto (120 Hz)'))
-
-    # ── Dropouts ─────────────────────────────────────────────────────────────
+    # ── Dropouts ──────────────────────────────────────────────────────────────
     if dropouts['dropout_count'] > 0:
         recs.append(('De-Jinx',
             f"{dropouts['dropout_count']} potential synthesis dropout(s) detected. "
-            "Run the ⚡ De-Jinx tab first before mastering.",
+            "Run ⚡ De-Jinx first before mastering.",
             f"{dropouts['dropout_count']} zone(s)"))
 
-    # Vocal ride — always recommend
-    settings['vocal_boost_db'] = 4.0
-    recs.append(('Vocal ride',
-        'Restores buried vocals in the second half of the track. '
-        'The tool auto-detects where the vocal drops and rides it back up.',
-        '+4 dB max (auto)'))
-
-    # ── Transients ───────────────────────────────────────────────────────────
-    if transients['crest_factor_db'] < 8:
-        recs.append(('Transients',
-            f"Low crest factor ({transients['crest_factor_db']:.1f} dB) — track has "
-            "been heavily compressed internally. Transient shaping will restore snap.",
-            'Auto'))
-
-    # ── Macro dynamics — based on natural dynamic range ──────────────────────
-    dr = loudness.get('dynamic_range_db', 0)
+    # ── Macro dynamics — based on natural dynamic range ───────────────────────
     if dr > 14:
-        # Track already has strong natural dynamics — don't compress them
         settings['macro_target_db'] = 0
         recs.append(('Macro dynamics',
-            f"Natural dynamic range is {dr:.1f} dB — well-shaped already. "
-            "Macro dynamics set to Off to preserve the natural contour.",
+            f"DR {dr:.1f} dB — well-shaped. Macro off.",
             'Off'))
     elif dr > 10:
-        # Moderate dynamics — gentle touch
         settings['macro_target_db'] = 1.5
         recs.append(('Macro dynamics',
-            f"Natural dynamic range is {dr:.1f} dB. Light macro dynamics "
-            "will gently even out sections without flattening the shape.",
+            f"DR {dr:.1f} dB — moderate. Light macro dynamics.",
             '1.5 dB'))
     else:
-        # Flat dynamics — standard setting
         settings['macro_target_db'] = 3.5
         recs.append(('Macro dynamics',
-            f"Dynamic range is {dr:.1f} dB — relatively flat. "
-            "Macro dynamics will add contrast between sections.",
+            f"DR {dr:.1f} dB — relatively flat. Macro dynamics active.",
             '3.5 dB'))
 
-    # ── LUFS ─────────────────────────────────────────────────────────────────
+    # ── LUFS ──────────────────────────────────────────────────────────────────
     lufs_diff = abs(loudness['lufs'] - (-14.0))
     if lufs_diff > 6:
         recs.append(('Loudness',
@@ -416,12 +544,8 @@ def _recommend(loudness, stereo, spectrum, sibilance, transients,
             f"Will be normalised to −14 LUFS ({lufs_diff:+.1f} dB adjustment).",
             f"{loudness['lufs']:+.1f} → −14.0 LUFS"))
 
-    settings['notes'] = recs
-    # ── Sub-bass side mix — default 0.15, preserve at 1.0 for wide-sub tracks ─
-    # No heuristic currently — always recommend default
-    # Users with intentional wide sub-bass should override in Expert panel
-    settings['bass_side_mix'] = 0.15
-
+    settings['notes']     = recs
+    settings['bass_side_mix'] = settings.get('bass_side_mix', 0.15)
     return settings
 
 

@@ -1,4 +1,4 @@
-'' StreamMaster v2.0.2 — Silent Launcher
+'' StreamMaster v2.0.3 — Silent Launcher
 '' Starts the server without a visible console window.
 '' Use Launch.bat instead if you need to see server output for debugging.
 
@@ -25,7 +25,7 @@ shell.Run "python -m pip install flask flask-cors pyloudnorm soundfile scipy num
           " --quiet --disable-pip-version-check", 0, True
 
 '' Launch the server — window style 0 = hidden
-shell.Run "python """ & scriptDir & "server.py""", 0, False
+shell.Run "python """ & scriptDir & "server.py"" --no-browser", 0, False
 
 '' Give the server a moment to start, then open the browser
 WScript.Sleep 1800

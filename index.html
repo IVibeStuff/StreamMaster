@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StreamMaster v2.0.2</title>
+<title>StreamMaster v2.0.3</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -603,7 +603,7 @@
   <p class="header-eyebrow">StreamMaster</p>
   <h1>Ready for <span>Streaming</span></h1>
   <p class="header-sub">−14 LUFS · −1 dBTP · 44.1 kHz · 16-bit</p>
-  <button class="about-btn" onclick="toggleAbout()">v2.0.2 — about</button>
+  <button class="about-btn" onclick="toggleAbout()">v2.0.3 — about</button>
 </header>
 
 <div class="layout">
@@ -635,7 +635,7 @@
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:480px;width:100%;position:relative">
     <button onclick="toggleAbout()" style="position:absolute;top:0.8rem;right:0.8rem;background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;line-height:1">✕</button>
     <p style="font-family:var(--mono);font-size:0.65rem;color:var(--green);letter-spacing:0.15em;text-transform:uppercase;margin:0 0 0.4rem">StreamMaster</p>
-    <h2 style="font-size:1.6rem;font-weight:700;margin:0 0 0.2rem">Version 2.0.2</h2>
+    <h2 style="font-size:1.6rem;font-weight:700;margin:0 0 0.2rem">Version 2.0.3</h2>
     <p style="color:var(--muted);font-size:0.85rem;margin:0 0 1.2rem">AI Music Mastering Suite</p>
     <div style="border-top:1px solid var(--border);padding-top:1rem;display:grid;grid-template-columns:130px 1fr;gap:0.35rem 0.5rem;font-size:0.82rem">
       <span style="color:var(--text);font-weight:500">Streaming target</span><span style="color:var(--muted)">−14 LUFS · −1 dBTP · 44.1 kHz / 16-bit</span>
@@ -650,6 +650,18 @@
       <span><a href="https://github.com/IVibeStuff/StreamMaster" target="_blank" style="color:var(--green);text-decoration:none">github.com/IVibeStuff/StreamMaster</a></span>
     </div>
     <p style="margin-top:1.2rem;font-size:0.72rem;color:var(--muted);font-style:italic;border-top:1px solid var(--border);padding-top:0.8rem">Audio never leaves your machine. No internet required after setup.</p>
+
+    <!-- Manual update check -->
+    <div style="display:flex;align-items:center;gap:0.6rem;margin-top:0.8rem">
+      <button onclick="manualCheckUpdate()"
+        id="manualUpdateBtn"
+        style="background:none;border:1px solid var(--border);border-radius:5px;
+               padding:0.3rem 0.8rem;font-family:var(--mono);font-size:0.68rem;
+               color:var(--muted);cursor:pointer;transition:border-color 0.15s,color 0.15s">
+        ↺ Check for updates
+      </button>
+      <span id="manualUpdateStatus" style="font-family:var(--mono);font-size:0.68rem;color:var(--muted)"></span>
+    </div>
 
     <!-- Workspace tab visibility toggles -->
     <div style="margin-top:1.2rem;border-top:1px solid var(--border);padding-top:1rem">
@@ -2578,21 +2590,36 @@ function initPanelInfoStates() {
 // ══════════════════════════════════════════════════════════
 //  AUTO-UPDATE
 // ══════════════════════════════════════════════════════════
-async function checkForUpdate() {
+
+async function manualCheckUpdate() {
+  const btn    = document.getElementById('manualUpdateBtn');
+  const status = document.getElementById('manualUpdateStatus');
+  btn.textContent    = '↺ Checking…';
+  status.textContent = '';
+  status.style.color = 'var(--muted)';
   try {
     const res  = await fetch(`${SERVER}/check_update`);
     const data = await res.json();
     if (data.update_available) {
-      const banner  = document.getElementById('updateBanner');
-      const text    = document.getElementById('updateBannerText');
-      const link    = document.getElementById('updateReleaseLink');
-      text.textContent = `StreamMaster v${data.latest_version} is available (you have v${data.current_version})`;
-      if (data.release_url) link.href = data.release_url;
-      banner.style.display = 'flex';
+      status.textContent = `v${data.latest_version} available!`;
+      status.style.color = 'var(--green)';
+      const banner = document.getElementById('updateBanner');
+      const text   = document.getElementById('updateBannerText');
+      const link   = document.getElementById('updateReleaseLink');
+      if (banner) {
+        text.textContent = `⬆ StreamMaster v${data.latest_version} is available — you have v${data.current_version}`;
+        if (data.release_url) link.href = data.release_url;
+        banner.style.display = 'flex';
+      }
+    } else if (data.error) {
+      status.textContent = `Check failed: ${data.error}`;
+    } else {
+      status.textContent = `You\'re on the latest version (v${data.current_version})`;
     }
-  } catch(_) {
-    // Silently ignore — update check should never break the UI
+  } catch(e) {
+    status.textContent = 'Could not reach server';
   }
+  btn.textContent = '↺ Check for updates';
 }
 
 async function applyUpdate() {
@@ -2620,8 +2647,25 @@ async function applyUpdate() {
   }
 }
 
-// Check for update 5 seconds after load (let server finish startup first)
-setTimeout(checkForUpdate, 5000);
+async function checkForUpdate() {
+  try {
+    const res  = await fetch(`${SERVER}/check_update`);
+    const data = await res.json();
+    if (data.update_available) {
+      const banner = document.getElementById('updateBanner');
+      const text   = document.getElementById('updateBannerText');
+      const link   = document.getElementById('updateReleaseLink');
+      if (!banner) return; // DOM not ready — will retry
+      text.textContent = `⬆ StreamMaster v${data.latest_version} is available — you have v${data.current_version}`;
+      if (data.release_url) link.href = data.release_url;
+      banner.style.display = 'flex';
+    }
+  } catch(_) {}
+}
+
+// Check after 3s, then again after 10s as a fallback in case DOM wasn't ready
+setTimeout(checkForUpdate, 3000);
+setTimeout(checkForUpdate, 10000);
 
 // ══════════════════════════════════════════════════════════
 //  HISTORY TAB

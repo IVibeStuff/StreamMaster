@@ -8,6 +8,7 @@ Browser opens automatically at http://localhost:5051
 Requires: pip install flask flask-cors pyloudnorm soundfile scipy numpy
 """
 
+import sys
 import tempfile
 import webbrowser
 import threading
@@ -741,9 +742,10 @@ def ping():
 
 if __name__ == "__main__":
     print("\n┌─────────────────────────────────────────────┐")
-    print("│  StreamMaster v2.0.2  —  localhost:5051         │")
+    print("│  StreamMaster v2.0.3  —  localhost:5051      │")
     print("└─────────────────────────────────────────────┘")
     print("  Opening http://localhost:5051 in your browser…\n")
     check_for_updates_background()
-    threading.Timer(1.0, lambda: webbrowser.open("http://localhost:5051")).start()
+    if '--no-browser' not in sys.argv:
+        threading.Timer(1.0, lambda: webbrowser.open("http://localhost:5051")).start()
     app.run(port=5051, debug=False)

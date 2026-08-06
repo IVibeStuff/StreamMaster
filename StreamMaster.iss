@@ -5,7 +5,7 @@
 ; Output: Output\StreamMaster_Setup_v2.0.exe
 
 #define AppName      "StreamMaster"
-#define AppVersion   "2.0.2"
+#define AppVersion   "2.0.3"
 #define AppPublisher "IVibeStuff"
 #define AppURL       "https://github.com/IVibeStuff/StreamMaster"
 #define AppExeName   "Launch_Silent.vbs"
@@ -95,7 +95,6 @@ Filename: "python"; Parameters: "-m pip install demucs --quiet --disable-pip-ver
 ; Launch StreamMaster after install (offer)
 Filename: "{sys}\wscript.exe"; Parameters: """{app}\Launch_Silent.vbs"""; \
   Description: "Launch {#AppName} now"; Flags: nowait postinstall skipifsilent
-
 [UninstallRun]
 ; Nothing to stop — server is not a service, user may have closed it already
 

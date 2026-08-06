@@ -4,14 +4,14 @@
   <img src="docs/logo_hero.png" alt="StreamMaster" width="640"/>
 </p>
 
-**AI Music Mastering Suite — v2.0**
+**AI Music Mastering Suite — v2.0.2**
 
 A local, open-source mastering toolkit for Suno and other AI-generated music. Prepares WAV files for professional streaming upload or personal listening. Runs entirely on your machine — no audio leaves your computer, no subscription required.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
-![Version](https://img.shields.io/badge/version-2.0-1DB954)
+![Version](https://img.shields.io/badge/version-2.0.2-1DB954)
 
 ---
 

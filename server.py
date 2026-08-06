@@ -741,7 +741,7 @@ def ping():
 
 if __name__ == "__main__":
     print("\n┌─────────────────────────────────────────────┐")
-    print("│  StreamMaster v2.0  —  localhost:5051         │")
+    print("│  StreamMaster v2.0.2  —  localhost:5051         │")
     print("└─────────────────────────────────────────────┘")
     print("  Opening http://localhost:5051 in your browser…\n")
     check_for_updates_background()

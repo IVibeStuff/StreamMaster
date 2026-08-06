@@ -28,7 +28,7 @@ from pathlib import Path
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-CURRENT_VERSION  = "2.0"
+CURRENT_VERSION  = "2.0.2"
 GITHUB_REPO      = "IVibeStuff/StreamMaster"
 API_URL          = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 CACHE_FILE       = Path(__file__).parent / ".update_cache.json"

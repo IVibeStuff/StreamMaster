@@ -4,7 +4,7 @@ All notable changes to StreamMaster are documented here, newest first.
 
 ---
 
-## v2.0
+## v2.0.2
 
 **Major release.** Full UI rebuild, extended heuristics, preview variant player, History tab, workspace customisation, and pip-style progress bars. See [RELEASE_2_0.md](RELEASE_2_0.md) for full details.
 

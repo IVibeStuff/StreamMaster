@@ -39,8 +39,8 @@ INSTALL_DIR      = Path(__file__).parent
 # ── Version comparison ─────────────────────────────────────────────────────────
 
 def _parse_version(tag: str) -> tuple:
-    """Parse a version tag like 'v2.1' or '2.1.3' into a comparable tuple."""
-    tag = tag.lstrip('v').strip()
+    """Parse a version tag like 'v2.1', 'V2.0.1' or '2.1.3' into a comparable tuple."""
+    tag = tag.lstrip('vV').strip()  # handle both v2.0 and V2.0.1
     parts = re.findall(r'\d+', tag)
     return tuple(int(p) for p in parts)
 
@@ -148,7 +148,7 @@ def check_for_updates_background() -> None:
                 'checked':          True,
                 'update_available': avail,
                 'current_version':  CURRENT_VERSION,
-                'latest_version':   tag.lstrip('v'),
+                'latest_version':   tag.lstrip('vV'),
                 'release_url':      html_url,
                 'asset_url':        asset['browser_download_url'] if asset else None,
                 'asset_name':       asset['name'] if asset else None,
@@ -159,7 +159,7 @@ def check_for_updates_background() -> None:
             _write_cache(result)
 
             if avail:
-                print(f"  Updater    : update available → v{tag.lstrip('v')} "
+                print(f"  Updater    : update available → v{tag.lstrip('vV')} "
                       f"(running v{CURRENT_VERSION})")
             else:
                 print(f"  Updater    : up to date (v{CURRENT_VERSION})")

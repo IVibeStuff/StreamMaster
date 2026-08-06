@@ -165,10 +165,15 @@ def check_for_updates_background() -> None:
                 print(f"  Updater    : up to date (v{CURRENT_VERSION})")
 
         except Exception as e:
-            with _state_lock:
-                _update_state['checked'] = True
-                _update_state['error']   = str(e)
-            print(f"  Updater    : check failed — {e}")
+            err_str = str(e)
+            # 404 means no releases published yet — not a real error
+            if '404' in err_str:
+                print(f"  Updater    : no releases found on GitHub yet — skipping")
+            else:
+                with _state_lock:
+                    _update_state['checked'] = True
+                    _update_state['error']   = err_str
+                print(f"  Updater    : check failed — {e}")
 
     threading.Thread(target=_run, daemon=True).start()
 

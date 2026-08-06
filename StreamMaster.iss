@@ -68,7 +68,7 @@ Source: "requirements.txt";       DestDir: "{app}"; Flags: ignoreversion
 Source: "Launch.bat";             DestDir: "{app}"; Flags: ignoreversion
 Source: "Launch_Silent.vbs";      DestDir: "{app}"; Flags: ignoreversion
 Source: "logo.svg";               DestDir: "{app}"; Flags: ignoreversion
-Source: "docs\logo_hero.png";     DestDir: "{app}\docs"; Flags: ignoreversion createallsubdirs
+Source: "docs\logo_hero.png";     DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "README.md";              DestDir: "{app}"; Flags: ignoreversion
 Source: "CHANGELOG.md";           DestDir: "{app}"; Flags: ignoreversion
 

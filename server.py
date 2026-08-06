@@ -9,6 +9,7 @@ Requires: pip install flask flask-cors pyloudnorm soundfile scipy numpy
 """
 
 import sys
+import time as _time
 import tempfile
 import webbrowser
 import threading
@@ -18,7 +19,6 @@ from pathlib import Path
 from flask import Flask, request, jsonify, send_file, Response
 from flask_cors import CORS
 
-import sys
 sys.path.insert(0, str(Path(__file__).parent))
 from spotify_master import master
 from splice import splice
@@ -39,6 +39,11 @@ CORS(app)
 
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "spotify_master"
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+# ── Heartbeat shutdown ─────────────────────────────────────────────────────
+_last_heartbeat    = _time.time()
+_HEARTBEAT_TIMEOUT = 15   # seconds without heartbeat before shutdown
+_heartbeat_active  = False  # only monitor once first heartbeat arrives
 
 # ── Console log capture ───────────────────────────────────────────────────────
 import builtins
@@ -525,7 +530,7 @@ def apply_update_route():
         result = apply_update(state['asset_url'], state['asset_name'])
         # Schedule restart after response is sent
         def _restart():
-            import time, subprocess
+            import time, subprocess, os
             time.sleep(1.5)
             subprocess.Popen(
                 ['cmd', '/c', result['bat_path']],
@@ -710,6 +715,44 @@ def heal_route():
     return jsonify({"status": "ok", "output": output_name})
 
 
+@app.route("/heartbeat", methods=["POST"])
+def heartbeat_route():
+    """Called by the browser every 5 seconds. Resets the shutdown timer."""
+    global _last_heartbeat, _heartbeat_active
+    _last_heartbeat = _time.time()
+    if not _heartbeat_active:
+        _heartbeat_active = True
+        threading.Thread(target=_heartbeat_monitor, daemon=True).start()
+    return jsonify({"status": "ok"})
+
+
+def _heartbeat_monitor():
+    """
+    Background thread: exits the server if no heartbeat arrives within
+    _HEARTBEAT_TIMEOUT seconds. Fires only after the first heartbeat,
+    so the server stays alive indefinitely if the browser hasn't connected yet.
+    Page refreshes are safe — the browser resumes heartbeats within ~1s.
+    """
+    import os
+    while True:
+        _time.sleep(5)
+        elapsed = _time.time() - _last_heartbeat
+        if elapsed > _HEARTBEAT_TIMEOUT:
+            print(f"\n  Server     : no browser heartbeat for {elapsed:.0f}s — shutting down")
+            os._exit(0)
+
+
+@app.route("/shutdown", methods=["POST"])
+def shutdown_route():
+    """Gracefully shut down the server."""
+    def _stop():
+        import time, os
+        time.sleep(0.5)
+        os._exit(0)
+    threading.Thread(target=_stop, daemon=True).start()
+    return jsonify({"status": "shutting down"})
+
+
 @app.route("/download", methods=["GET"])
 def download_route():
     filename = request.args.get("file")
@@ -741,8 +784,20 @@ def ping():
 
 
 if __name__ == "__main__":
+    # Check if another instance is already running on port 5051
+    import socket
+    _sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    _in_use = _sock.connect_ex(('127.0.0.1', 5051)) == 0
+    _sock.close()
+    if _in_use:
+        print("\n⚠  Port 5051 is already in use — another StreamMaster instance may be running.")
+        print("   Opening the existing instance in your browser instead.\n")
+        import webbrowser as _wb
+        _wb.open("http://localhost:5051")
+        sys.exit(0)
+
     print("\n┌─────────────────────────────────────────────┐")
-    print("│  StreamMaster v2.0.3  —  localhost:5051      │")
+    print("│  StreamMaster v2.0.4  —  localhost:5051      │")
     print("└─────────────────────────────────────────────┘")
     print("  Opening http://localhost:5051 in your browser…\n")
     check_for_updates_background()

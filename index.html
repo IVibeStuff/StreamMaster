@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StreamMaster v2.0.3</title>
+<title>StreamMaster v2.0.4</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -603,7 +603,7 @@
   <p class="header-eyebrow">StreamMaster</p>
   <h1>Ready for <span>Streaming</span></h1>
   <p class="header-sub">−14 LUFS · −1 dBTP · 44.1 kHz · 16-bit</p>
-  <button class="about-btn" onclick="toggleAbout()">v2.0.3 — about</button>
+  <button class="about-btn" onclick="toggleAbout()">v2.0.4 — about</button>
 </header>
 
 <div class="layout">
@@ -635,7 +635,7 @@
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:480px;width:100%;position:relative">
     <button onclick="toggleAbout()" style="position:absolute;top:0.8rem;right:0.8rem;background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;line-height:1">✕</button>
     <p style="font-family:var(--mono);font-size:0.65rem;color:var(--green);letter-spacing:0.15em;text-transform:uppercase;margin:0 0 0.4rem">StreamMaster</p>
-    <h2 style="font-size:1.6rem;font-weight:700;margin:0 0 0.2rem">Version 2.0.3</h2>
+    <h2 style="font-size:1.6rem;font-weight:700;margin:0 0 0.2rem">Version 2.0.4</h2>
     <p style="color:var(--muted);font-size:0.85rem;margin:0 0 1.2rem">AI Music Mastering Suite</p>
     <div style="border-top:1px solid var(--border);padding-top:1rem;display:grid;grid-template-columns:130px 1fr;gap:0.35rem 0.5rem;font-size:0.82rem">
       <span style="color:var(--text);font-weight:500">Streaming target</span><span style="color:var(--muted)">−14 LUFS · −1 dBTP · 44.1 kHz / 16-bit</span>
@@ -657,10 +657,20 @@
         id="manualUpdateBtn"
         style="background:none;border:1px solid var(--border);border-radius:5px;
                padding:0.3rem 0.8rem;font-family:var(--mono);font-size:0.68rem;
-               color:var(--muted);cursor:pointer;transition:border-color 0.15s,color 0.15s">
+               color:var(--muted);cursor:pointer">
         ↺ Check for updates
       </button>
       <span id="manualUpdateStatus" style="font-family:var(--mono);font-size:0.68rem;color:var(--muted)"></span>
+    </div>
+
+    <!-- Quit button -->
+    <div style="margin-top:0.5rem">
+      <button onclick="quitServer()"
+        style="background:none;border:1px solid rgba(220,53,69,0.4);border-radius:5px;
+               padding:0.3rem 0.8rem;font-family:var(--mono);font-size:0.68rem;
+               color:rgba(220,53,69,0.7);cursor:pointer">
+        ⏹ Quit StreamMaster
+      </button>
     </div>
 
     <!-- Workspace tab visibility toggles -->
@@ -2591,6 +2601,14 @@ function initPanelInfoStates() {
 //  AUTO-UPDATE
 // ══════════════════════════════════════════════════════════
 
+async function quitServer() {
+  if (!confirm('Stop StreamMaster server?\n\nThe browser tab will close and the tool will stop running.')) return;
+  try {
+    await fetch(`${SERVER}/shutdown`, {method:'POST'});
+  } catch(_) {}
+  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:monospace;color:#1DB954;background:#0a0a0f;font-size:1.1rem">StreamMaster stopped. You can close this tab.</div>';
+}
+
 async function manualCheckUpdate() {
   const btn    = document.getElementById('manualUpdateBtn');
   const status = document.getElementById('manualUpdateStatus');
@@ -2662,6 +2680,14 @@ async function checkForUpdate() {
     }
   } catch(_) {}
 }
+
+// ── Browser heartbeat — keeps server alive while tab is open ─────────────────
+// Server shuts down automatically 15s after heartbeats stop (tab closed/crashed)
+function _sendHeartbeat() {
+  fetch(`${SERVER}/heartbeat`, {method:'POST'}).catch(()=>{});
+}
+_sendHeartbeat(); // immediate on load
+setInterval(_sendHeartbeat, 5000);
 
 // Check after 3s, then again after 10s as a fallback in case DOM wasn't ready
 setTimeout(checkForUpdate, 3000);

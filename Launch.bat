@@ -5,7 +5,7 @@ color 0A
 
 echo.
 echo  ==========================================
-echo   StreamMaster v2.0.6
+echo   StreamMaster v2.0.7
 echo  ==========================================
 echo.
 

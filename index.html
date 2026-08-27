@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StreamMaster v2.0.6</title>
+<title>StreamMaster v2.0.7</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -603,7 +603,7 @@
   <p class="header-eyebrow">StreamMaster</p>
   <h1>Ready for <span>Streaming</span></h1>
   <p class="header-sub">−14 LUFS · −1 dBTP · 44.1 kHz · 16-bit</p>
-  <button class="about-btn" onclick="toggleAbout()">v2.0.6 — about</button>
+  <button class="about-btn" onclick="toggleAbout()">v2.0.7 — about</button>
 </header>
 
 <div class="layout">
@@ -635,7 +635,7 @@
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:480px;width:100%;position:relative">
     <button onclick="toggleAbout()" style="position:absolute;top:0.8rem;right:0.8rem;background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;line-height:1">✕</button>
     <p style="font-family:var(--mono);font-size:0.65rem;color:var(--green);letter-spacing:0.15em;text-transform:uppercase;margin:0 0 0.4rem">StreamMaster</p>
-    <h2 style="font-size:1.6rem;font-weight:700;margin:0 0 0.2rem">Version 2.0.6</h2>
+    <h2 style="font-size:1.6rem;font-weight:700;margin:0 0 0.2rem">Version 2.0.7</h2>
     <p style="color:var(--muted);font-size:0.85rem;margin:0 0 1.2rem">AI Music Mastering Suite</p>
     <div style="border-top:1px solid var(--border);padding-top:1rem;display:grid;grid-template-columns:130px 1fr;gap:0.35rem 0.5rem;font-size:0.82rem">
       <span style="color:var(--text);font-weight:500">Streaming target</span><span style="color:var(--muted)">−14 LUFS · −1 dBTP · 44.1 kHz / 16-bit</span>
@@ -2616,7 +2616,7 @@ async function manualCheckUpdate() {
   status.textContent = '';
   status.style.color = 'var(--muted)';
   try {
-    const res  = await fetch(`${SERVER}/check_update`);
+    const res  = await fetch(`${SERVER}/check_update?force=1`);
     const data = await res.json();
     if (data.update_available) {
       status.textContent = `v${data.latest_version} available!`;
@@ -2646,6 +2646,17 @@ async function applyUpdate() {
   btn.disabled    = true;
   try {
     const res  = await fetch(`${SERVER}/apply_update`, {method:'POST'});
+    if (res.status === 404) {
+      // Old server version doesn't have this route — direct to GitHub
+      const state = await fetch(`${SERVER}/check_update?force=1`).then(r=>r.json()).catch(()=>({}));
+      const url   = state.release_url || 'https://github.com/IVibeStuff/StreamMaster/releases/latest';
+      document.getElementById('updateBannerText').textContent =
+        'Please download the update manually from GitHub — your server version is too old to auto-update.';
+      window.open(url, '_blank');
+      btn.textContent = 'Update now';
+      btn.disabled    = false;
+      return;
+    }
     const data = await res.json();
     if (data.error) {
       alert(`Update failed: ${data.error}`);

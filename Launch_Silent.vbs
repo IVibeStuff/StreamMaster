@@ -1,4 +1,4 @@
-'' StreamMaster v2.0.6 — Silent Launcher
+'' StreamMaster v2.0.7 — Silent Launcher
 '' Starts the server without a visible console window.
 '' Use Launch.bat instead if you need to see server output for debugging.
 

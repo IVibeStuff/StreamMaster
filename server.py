@@ -513,13 +513,62 @@ def preview_regen_route():
 
 @app.route("/check_update")
 def check_update_route():
-    """Return current update check state."""
+    """Return current update check state. Pass ?force=1 to bypass cache."""
+    from updater import CACHE_FILE
+    if request.args.get('force') == '1':
+        try:
+            if CACHE_FILE.exists():
+                CACHE_FILE.unlink()
+        except Exception:
+            pass
+        # Re-run the check synchronously
+        import urllib.request, json as _json, re as _re
+        from updater import API_URL, _get_zip_asset, is_newer, CURRENT_VERSION, _write_cache, _update_state, _state_lock
+        try:
+            req = urllib.request.Request(API_URL, headers={
+                'User-Agent': f'StreamMaster/{CURRENT_VERSION}',
+                'Accept': 'application/vnd.github+json',
+            })
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                release = _json.loads(resp.read())
+            tag   = release.get('tag_name', '')
+            asset = _get_zip_asset(release)
+            avail = is_newer(tag)
+            result = {
+                'checked': True, 'update_available': avail,
+                'current_version': CURRENT_VERSION,
+                'latest_version': tag.lstrip('vV'),
+                'release_url': release.get('html_url', ''),
+                'asset_url':  asset['browser_download_url'] if asset else None,
+                'asset_name': asset['name'] if asset else None,
+                'error': None,
+            }
+            with _state_lock:
+                _update_state.update(result)
+            _write_cache(result)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({'error': str(e), 'checked': True,
+                            'update_available': False,
+                            'current_version': CURRENT_VERSION})
     return jsonify(get_update_state())
 
 
 @app.route("/apply_update", methods=["POST"])
 def apply_update_route():
     """Download the update, stage it, and schedule a restart."""
+    import json as _json
+    from updater import CACHE_FILE
+
+    # Always clear the cache before downloading so we fetch the true latest
+    # asset URL — a cached result may point to an old release asset
+    try:
+        if CACHE_FILE.exists():
+            CACHE_FILE.unlink()
+    except Exception:
+        pass
+
+    # Re-fetch the current state (now uncached)
     state = get_update_state()
     if not state.get('update_available'):
         return jsonify({"error": "No update available"}), 400
@@ -528,19 +577,24 @@ def apply_update_route():
                         "release_url": state.get('release_url')}), 400
     try:
         result = apply_update(state['asset_url'], state['asset_name'])
-        # Schedule restart after response is sent
         def _restart():
             import time, subprocess, os
             time.sleep(1.5)
             subprocess.Popen(
                 ['cmd', '/c', result['bat_path']],
-                creationflags=0x00000008,  # DETACHED_PROCESS
+                creationflags=0x00000008,
                 close_fds=True
             )
             os._exit(0)
         threading.Thread(target=_restart, daemon=True).start()
         return jsonify({"status": "restart_pending"})
     except Exception as e:
+        # Clear cache on failure so next attempt re-fetches
+        try:
+            if CACHE_FILE.exists():
+                CACHE_FILE.unlink()
+        except Exception:
+            pass
         return jsonify({"error": str(e)}), 500
 
 
@@ -797,7 +851,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     print("\n┌─────────────────────────────────────────────┐")
-    print("│  StreamMaster v2.0.6  —  localhost:5051      │")
+    print("│  StreamMaster v2.0.7  —  localhost:5051      │")
     print("└─────────────────────────────────────────────┘")
     print("  Opening http://localhost:5051 in your browser…\n")
     check_for_updates_background()

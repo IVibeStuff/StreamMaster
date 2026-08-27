@@ -5,7 +5,7 @@
 ; Output: Output\StreamMaster_Setup_v2.0.exe
 
 #define AppName      "StreamMaster"
-#define AppVersion   "2.0.6"
+#define AppVersion   "2.0.7"
 #define AppPublisher "IVibeStuff"
 #define AppURL       "https://github.com/IVibeStuff/StreamMaster"
 #define AppExeName   "Launch_Silent.vbs"

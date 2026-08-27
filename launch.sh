@@ -2,7 +2,7 @@
 set -e
 echo ""
 echo "  =========================================="
-echo "   StreamMaster v2.0.4"
+echo "   StreamMaster v2.0.5"
 echo "  =========================================="
 echo ""
 if ! command -v python3 &>/dev/null; then

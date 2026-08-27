@@ -28,7 +28,7 @@ from pathlib import Path
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-CURRENT_VERSION  = "2.0.8"
+CURRENT_VERSION  = "2.0.9"
 GITHUB_REPO      = "IVibeStuff/StreamMaster"
 API_URL          = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 CACHE_FILE       = Path(__file__).parent / ".update_cache.json"
@@ -220,6 +220,11 @@ echo ================================================
 echo   StreamMaster Auto-Update
 echo ================================================
 echo.
+echo  Starting update process...
+echo  Install dir: {INSTALL_DIR}
+echo  Stage dir:   {stage_dir}
+echo.
+
 echo  Waiting for server to exit...
 timeout /t 5 /nobreak >nul
 
@@ -230,7 +235,7 @@ if exist %HIST% (
     copy /Y %HIST% %HIST_TMP% >nul
     echo  History backed up.
 ) else (
-    echo  No history file found, skipping backup.
+    echo  No history file, skipping.
 )
 
 echo.
@@ -239,36 +244,32 @@ set SRC="{extracted}"
 for /D %%d in ("{extracted}\\*") do (
     if exist "%%d\\server.py" (
         set SRC=%%d
-        echo  Found source: %%d
     )
 )
-echo  Source directory: %SRC%
-echo.
+echo  Source: %SRC%
 
-echo  Checking source exists...
+echo  Checking source...
 if not exist "%SRC%\\server.py" (
-    echo  ERROR: server.py not found in %SRC%
-    echo  Update failed - source files missing.
+    echo  ERROR: server.py not found in source directory.
+    echo  Contents of extracted folder:
+    dir "{extracted}"
     pause
     exit /b 1
 )
 
-echo  Copying files to install directory...
-echo  Target: "{INSTALL_DIR}"
-xcopy /E /Y /I "%SRC%\\*" "{INSTALL_DIR}\\" 
+echo.
+echo  Copying files...
+xcopy /E /Y /I "%SRC%\\*" "{INSTALL_DIR}\\"
 if %ERRORLEVEL% neq 0 (
-    echo  ERROR: xcopy failed with error %ERRORLEVEL%
+    echo  ERROR: xcopy failed with code %ERRORLEVEL%
     pause
     exit /b 1
 )
-echo  Files copied successfully.
+echo  Files copied OK.
 
 echo.
 echo  Restoring history...
-if exist %HIST_TMP% (
-    copy /Y %HIST_TMP% %HIST% >nul
-    echo  History restored.
-)
+if exist %HIST_TMP% copy /Y %HIST_TMP% %HIST% >nul
 
 echo  Clearing update cache...
 del /Q "{CACHE_FILE}" >nul 2>&1
@@ -276,18 +277,17 @@ del /Q "{CACHE_FILE}" >nul 2>&1
 echo.
 echo  Relaunching StreamMaster...
 if exist "{INSTALL_DIR}\\Launch_Silent.vbs" (
-    echo  Using: Launch_Silent.vbs
+    echo  Using Launch_Silent.vbs
     start "" wscript.exe "{INSTALL_DIR}\\Launch_Silent.vbs"
 ) else (
-    echo  Using: Launch.bat
+    echo  Using Launch.bat
     start "" "{INSTALL_DIR}\\Launch.bat"
 )
 
 echo.
-echo  Update complete! This window will close in 5 seconds.
+echo  Update complete.
+echo  Cleaning up in 5 seconds...
 timeout /t 5 /nobreak >nul
-
-echo  Cleaning up staging files...
 rd /S /Q "{stage_dir}" >nul 2>&1
 """
     bat_path.write_text(script, encoding='utf-8')

@@ -580,8 +580,9 @@ def apply_update_route():
         def _restart():
             import time, subprocess, os
             time.sleep(1.5)
+            # Use 'start' to open bat in a new visible window that stays open
             subprocess.Popen(
-                ['cmd', '/c', result['bat_path']],
+                ['cmd', '/c', 'start', 'cmd', '/k', result['bat_path']]
             )
             os._exit(0)
         threading.Thread(target=_restart, daemon=True).start()
@@ -849,7 +850,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     print("\n┌─────────────────────────────────────────────┐")
-    print("│  StreamMaster v2.0.8  —  localhost:5051      │")
+    print("│  StreamMaster v2.0.9  —  localhost:5051      │")
     print("└─────────────────────────────────────────────┘")
     print("  Opening http://localhost:5051 in your browser…\n")
     check_for_updates_background()

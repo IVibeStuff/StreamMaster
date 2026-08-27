@@ -850,7 +850,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     print("\n┌─────────────────────────────────────────────┐")
-    print("│  StreamMaster v2.0.9  —  localhost:5051      │")
+    print("│  StreamMaster v2.1.0  —  localhost:5051      │")
     print("└─────────────────────────────────────────────┘")
     print("  Opening http://localhost:5051 in your browser…\n")
     check_for_updates_background()

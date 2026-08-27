@@ -28,7 +28,7 @@ from pathlib import Path
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-CURRENT_VERSION  = "2.0.9"
+CURRENT_VERSION  = "2.1.0"
 GITHUB_REPO      = "IVibeStuff/StreamMaster"
 API_URL          = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 CACHE_FILE       = Path(__file__).parent / ".update_cache.json"
@@ -207,10 +207,20 @@ def download_and_stage(asset_url: str, asset_name: str) -> Path:
 def write_restart_script(stage_dir: Path) -> Path:
     """
     Write a Windows .bat script that swaps files and relaunches StreamMaster.
-    Opens visibly so the user can see progress and any errors.
+    All paths normalised to Windows backslashes.
     """
-    extracted = stage_dir / 'extracted'
-    bat_path  = stage_dir / 'restart.bat'
+    extracted  = stage_dir / 'extracted'
+    bat_path   = stage_dir / 'restart.bat'
+
+    # Normalise all paths to Windows backslashes
+    inst    = str(INSTALL_DIR).replace('/', '\\')
+    extr    = str(extracted).replace('/', '\\')
+    stg     = str(stage_dir).replace('/', '\\')
+    cache   = str(CACHE_FILE).replace('/', '\\')
+    hist    = inst + '\\history.json'
+    hist_tmp= stg  + '\\history_backup.json'
+    vbs     = inst + '\\Launch_Silent.vbs'
+    bat_win = inst + '\\Launch.bat'
 
     script = f"""@echo off
 chcp 65001 >nul
@@ -220,46 +230,40 @@ echo ================================================
 echo   StreamMaster Auto-Update
 echo ================================================
 echo.
-echo  Starting update process...
-echo  Install dir: {INSTALL_DIR}
-echo  Stage dir:   {stage_dir}
+echo  Install dir: {inst}
+echo  Stage dir:   {stg}
 echo.
 
 echo  Waiting for server to exit...
 timeout /t 5 /nobreak >nul
 
 echo  Backing up history...
-set HIST="{INSTALL_DIR}\\history.json"
-set HIST_TMP="{stage_dir}\\history_backup.json"
-if exist %HIST% (
-    copy /Y %HIST% %HIST_TMP% >nul
+if exist "{hist}" (
+    copy /Y "{hist}" "{hist_tmp}" >nul
     echo  History backed up.
 ) else (
-    echo  No history file, skipping.
+    echo  No history file found.
 )
 
 echo.
 echo  Locating update files...
-set SRC="{extracted}"
-for /D %%d in ("{extracted}\\*") do (
-    if exist "%%d\\server.py" (
-        set SRC=%%d
-    )
+set "SRC={extr}"
+for /D %%d in ("{extr}\\*") do (
+    if exist "%%d\\server.py" set "SRC=%%d"
 )
 echo  Source: %SRC%
 
-echo  Checking source...
 if not exist "%SRC%\\server.py" (
     echo  ERROR: server.py not found in source directory.
-    echo  Contents of extracted folder:
-    dir "{extracted}"
+    echo  Contents of extracted:
+    dir "{extr}"
     pause
     exit /b 1
 )
 
 echo.
-echo  Copying files...
-xcopy /E /Y /I "%SRC%\\*" "{INSTALL_DIR}\\"
+echo  Copying update files...
+xcopy /E /Y /I "%SRC%\\*" "{inst}\\"
 if %ERRORLEVEL% neq 0 (
     echo  ERROR: xcopy failed with code %ERRORLEVEL%
     pause
@@ -267,28 +271,26 @@ if %ERRORLEVEL% neq 0 (
 )
 echo  Files copied OK.
 
-echo.
 echo  Restoring history...
-if exist %HIST_TMP% copy /Y %HIST_TMP% %HIST% >nul
+if exist "{hist_tmp}" copy /Y "{hist_tmp}" "{hist}" >nul
 
 echo  Clearing update cache...
-del /Q "{CACHE_FILE}" >nul 2>&1
+if exist "{cache}" del /Q "{cache}"
 
 echo.
 echo  Relaunching StreamMaster...
-if exist "{INSTALL_DIR}\\Launch_Silent.vbs" (
+if exist "{vbs}" (
     echo  Using Launch_Silent.vbs
-    start "" wscript.exe "{INSTALL_DIR}\\Launch_Silent.vbs"
+    start "" wscript.exe "{vbs}"
 ) else (
     echo  Using Launch.bat
-    start "" "{INSTALL_DIR}\\Launch.bat"
+    start "" "{bat_win}"
 )
 
 echo.
-echo  Update complete.
-echo  Cleaning up in 5 seconds...
-timeout /t 5 /nobreak >nul
-rd /S /Q "{stage_dir}" >nul 2>&1
+echo  Done. This window will close in 8 seconds.
+timeout /t 8 /nobreak >nul
+rd /S /Q "{stg}" >nul 2>&1
 """
     bat_path.write_text(script, encoding='utf-8')
     return bat_path

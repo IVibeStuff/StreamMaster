@@ -28,7 +28,7 @@ from pathlib import Path
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-CURRENT_VERSION  = "2.0.7"
+CURRENT_VERSION  = "2.0.8"
 GITHUB_REPO      = "IVibeStuff/StreamMaster"
 API_URL          = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 CACHE_FILE       = Path(__file__).parent / ".update_cache.json"
@@ -206,64 +206,88 @@ def download_and_stage(asset_url: str, asset_name: str) -> Path:
 
 def write_restart_script(stage_dir: Path) -> Path:
     """
-    Write a Windows .bat script that:
-      1. Waits for the server process to exit
-      2. Copies new files from staging over the install directory
-      3. Preserves history.json
-      4. Relaunches via Launch_Silent.vbs or Launch.bat
-      5. Cleans up the staging directory
-
-    Returns path to the .bat file.
+    Write a Windows .bat script that swaps files and relaunches StreamMaster.
+    Opens visibly so the user can see progress and any errors.
     """
     extracted = stage_dir / 'extracted'
     bat_path  = stage_dir / 'restart.bat'
-
-    # The source dir for xcopy — may be flat or have one subfolder
-    # We handle both by trying the subfolder first, falling back to flat
-    src_dir = extracted
 
     script = f"""@echo off
 chcp 65001 >nul
 title StreamMaster Update
 echo.
-echo  Applying StreamMaster update...
+echo ================================================
+echo   StreamMaster Auto-Update
+echo ================================================
 echo.
+echo  Waiting for server to exit...
+timeout /t 5 /nobreak >nul
 
-REM Wait for old server to exit
-timeout /t 4 /nobreak >nul
-
-REM Backup history.json
+echo  Backing up history...
 set HIST="{INSTALL_DIR}\\history.json"
 set HIST_TMP="{stage_dir}\\history_backup.json"
-if exist %HIST% copy /Y %HIST% %HIST_TMP% >nul
-
-REM Find the source directory (may have a subfolder from zip structure)
-set SRC="{extracted}"
-for /D %%d in ("{extracted}\\*") do (
-    if exist "%%d\\server.py" set SRC=%%d
+if exist %HIST% (
+    copy /Y %HIST% %HIST_TMP% >nul
+    echo  History backed up.
+) else (
+    echo  No history file found, skipping backup.
 )
 
-REM Copy new files over install directory
-xcopy /E /Y /I "%SRC%\\*" "{INSTALL_DIR}\\" >nul 2>&1
+echo.
+echo  Locating update files...
+set SRC="{extracted}"
+for /D %%d in ("{extracted}\\*") do (
+    if exist "%%d\\server.py" (
+        set SRC=%%d
+        echo  Found source: %%d
+    )
+)
+echo  Source directory: %SRC%
+echo.
 
-REM Restore history
-if exist %HIST_TMP% copy /Y %HIST_TMP% %HIST% >nul
+echo  Checking source exists...
+if not exist "%SRC%\\server.py" (
+    echo  ERROR: server.py not found in %SRC%
+    echo  Update failed - source files missing.
+    pause
+    exit /b 1
+)
 
-REM Clear update cache so next launch re-checks version
+echo  Copying files to install directory...
+echo  Target: "{INSTALL_DIR}"
+xcopy /E /Y /I "%SRC%\\*" "{INSTALL_DIR}\\" 
+if %ERRORLEVEL% neq 0 (
+    echo  ERROR: xcopy failed with error %ERRORLEVEL%
+    pause
+    exit /b 1
+)
+echo  Files copied successfully.
+
+echo.
+echo  Restoring history...
+if exist %HIST_TMP% (
+    copy /Y %HIST_TMP% %HIST% >nul
+    echo  History restored.
+)
+
+echo  Clearing update cache...
 del /Q "{CACHE_FILE}" >nul 2>&1
 
-echo  Update complete. Restarting StreamMaster...
-timeout /t 2 /nobreak >nul
-
-REM Relaunch — prefer silent launcher, fall back to bat
+echo.
+echo  Relaunching StreamMaster...
 if exist "{INSTALL_DIR}\\Launch_Silent.vbs" (
+    echo  Using: Launch_Silent.vbs
     start "" wscript.exe "{INSTALL_DIR}\\Launch_Silent.vbs"
 ) else (
+    echo  Using: Launch.bat
     start "" "{INSTALL_DIR}\\Launch.bat"
 )
 
-REM Clean up staging directory
+echo.
+echo  Update complete! This window will close in 5 seconds.
 timeout /t 5 /nobreak >nul
+
+echo  Cleaning up staging files...
 rd /S /Q "{stage_dir}" >nul 2>&1
 """
     bat_path.write_text(script, encoding='utf-8')

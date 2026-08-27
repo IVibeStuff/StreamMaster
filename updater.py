@@ -28,7 +28,7 @@ from pathlib import Path
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-CURRENT_VERSION  = "2.0.5"
+CURRENT_VERSION  = "2.0.6"
 GITHUB_REPO      = "IVibeStuff/StreamMaster"
 API_URL          = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 CACHE_FILE       = Path(__file__).parent / ".update_cache.json"
@@ -218,9 +218,9 @@ def write_restart_script(stage_dir: Path) -> Path:
     extracted = stage_dir / 'extracted'
     bat_path  = stage_dir / 'restart.bat'
 
-    # Find the extracted subfolder (zip may have a top-level folder)
-    subdirs = [d for d in extracted.iterdir() if d.is_dir()]
-    src_dir = subdirs[0] if subdirs else extracted
+    # The source dir for xcopy — may be flat or have one subfolder
+    # We handle both by trying the subfolder first, falling back to flat
+    src_dir = extracted
 
     script = f"""@echo off
 chcp 65001 >nul
@@ -229,35 +229,41 @@ echo.
 echo  Applying StreamMaster update...
 echo.
 
-REM Wait for server to exit (up to 10 seconds)
-timeout /t 3 /nobreak >nul
+REM Wait for old server to exit
+timeout /t 4 /nobreak >nul
 
-REM Preserve history before copying
-set HISTORY="{INSTALL_DIR / 'history.json'}"
-set HISTORY_TMP="{stage_dir / 'history_backup.json'}"
-if exist %HISTORY% copy /Y %HISTORY% %HISTORY_TMP% >nul
+REM Backup history.json
+set HIST="{INSTALL_DIR}\\history.json"
+set HIST_TMP="{stage_dir}\\history_backup.json"
+if exist %HIST% copy /Y %HIST% %HIST_TMP% >nul
 
-REM Copy new files
-xcopy /E /Y /I "{src_dir}\\*" "{INSTALL_DIR}\\" >nul
+REM Find the source directory (may have a subfolder from zip structure)
+set SRC="{extracted}"
+for /D %%d in ("{extracted}\\*") do (
+    if exist "%%d\\server.py" set SRC=%%d
+)
+
+REM Copy new files over install directory
+xcopy /E /Y /I "%SRC%\\*" "{INSTALL_DIR}\\" >nul 2>&1
 
 REM Restore history
-if exist %HISTORY_TMP% copy /Y %HISTORY_TMP% %HISTORY% >nul
+if exist %HIST_TMP% copy /Y %HIST_TMP% %HIST% >nul
 
-REM Clear update cache so next launch re-checks
+REM Clear update cache so next launch re-checks version
 del /Q "{CACHE_FILE}" >nul 2>&1
 
 echo  Update complete. Restarting StreamMaster...
-timeout /t 1 /nobreak >nul
+timeout /t 2 /nobreak >nul
 
-REM Relaunch
-if exist "{INSTALL_DIR / 'Launch_Silent.vbs'}" (
-    start "" wscript.exe "{INSTALL_DIR / 'Launch_Silent.vbs'}"
+REM Relaunch — prefer silent launcher, fall back to bat
+if exist "{INSTALL_DIR}\\Launch_Silent.vbs" (
+    start "" wscript.exe "{INSTALL_DIR}\\Launch_Silent.vbs"
 ) else (
-    start "" "{INSTALL_DIR / 'Launch.bat'}"
+    start "" "{INSTALL_DIR}\\Launch.bat"
 )
 
-REM Clean up staging
-timeout /t 3 /nobreak >nul
+REM Clean up staging directory
+timeout /t 5 /nobreak >nul
 rd /S /Q "{stage_dir}" >nul 2>&1
 """
     bat_path.write_text(script, encoding='utf-8')

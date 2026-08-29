@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StreamMaster v2.1.0</title>
+<title>StreamMaster v2.2</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -603,7 +603,7 @@
   <p class="header-eyebrow">StreamMaster</p>
   <h1>Ready for <span>Streaming</span></h1>
   <p class="header-sub">−14 LUFS · −1 dBTP · 44.1 kHz · 16-bit</p>
-  <button class="about-btn" onclick="toggleAbout()">v2.1.0 — about</button>
+  <button class="about-btn" onclick="toggleAbout()">v2.2 — about</button>
 </header>
 
 <div class="layout">
@@ -635,7 +635,7 @@
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:480px;width:100%;position:relative">
     <button onclick="toggleAbout()" style="position:absolute;top:0.8rem;right:0.8rem;background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;line-height:1">✕</button>
     <p style="font-family:var(--mono);font-size:0.65rem;color:var(--green);letter-spacing:0.15em;text-transform:uppercase;margin:0 0 0.4rem">StreamMaster</p>
-    <h2 style="font-size:1.6rem;font-weight:700;margin:0 0 0.2rem">Version 2.1.0</h2>
+    <h2 style="font-size:1.6rem;font-weight:700;margin:0 0 0.2rem">Version 2.2</h2>
     <p style="color:var(--muted);font-size:0.85rem;margin:0 0 1.2rem">AI Music Mastering Suite</p>
     <div style="border-top:1px solid var(--border);padding-top:1rem;display:grid;grid-template-columns:130px 1fr;gap:0.35rem 0.5rem;font-size:0.82rem">
       <span style="color:var(--text);font-weight:500">Streaming target</span><span style="color:var(--muted)">−14 LUFS · −1 dBTP · 44.1 kHz / 16-bit</span>
@@ -755,38 +755,60 @@
     </div>
     <div class="report" id="analyseReport" style="display:none"></div>
 
-    <!-- Preview section — appears after analysis, generated in background -->
+    <!-- Preview section — manual trigger -->
     <div id="previewSection" style="display:none;flex-direction:column;gap:0.6rem;margin-top:0.5rem">
 
       <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem">
         <span style="font-family:var(--mono);font-size:0.72rem;color:var(--green);text-transform:uppercase;letter-spacing:0.08em">▶ Preview variants</span>
-        <span style="font-family:var(--mono);font-size:0.65rem;color:var(--muted)" id="previewStatus">Generating clips…</span>
+        <span style="font-family:var(--mono);font-size:0.65rem;color:var(--muted)" id="previewStatus"></span>
       </div>
 
-      <!-- Waveform scrubber -->
-      <div style="position:relative;cursor:crosshair" id="waveformContainer">
-        <canvas id="waveformCanvas" height="64"
-          style="width:100%;height:64px;border-radius:5px;background:var(--surface2);display:block"></canvas>
-        <!-- Window highlight overlay -->
-        <div id="waveformWindow" style="
-          position:absolute;top:0;height:100%;
-          background:rgba(29,185,84,0.18);border:1px solid rgba(29,185,84,0.5);
-          border-radius:3px;pointer-events:none;display:none"></div>
-        <div id="waveformDragHandle" style="
-          position:absolute;top:0;height:100%;width:12px;
-          cursor:ew-resize;display:none;z-index:2"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:0.6rem;color:var(--muted);margin-top:-0.3rem">
-        <span id="wfTimeLeft">0:00</span>
-        <span style="color:var(--green)" id="wfWindowLabel"></span>
-        <span id="wfTimeRight">0:00</span>
+      <!-- Generate button — shown before first generation -->
+      <button class="btn btn-primary" id="previewGenerateBtn" onclick="runPreviewGeneration()"
+        style="font-size:0.85rem;padding:0.7rem">
+        🎧 Generate preview clips
+      </button>
+      <div style="font-family:var(--mono);font-size:0.6rem;color:var(--muted);text-align:center;margin-top:-0.3rem">
+        Creates four 30-second variants — Raw, Optimised, Vocal Forward, Preserve Character
       </div>
 
-      <!-- Variant cards -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem" id="variantCards"></div>
+      <!-- Scrubber + variant cards — hidden until clips are ready -->
+      <div id="waveformArea" style="display:none;flex-direction:column;gap:0.5rem">
 
-      <button class="btn" id="previewRegenBtn" style="display:none;font-size:0.75rem;padding:0.4rem"
-        onclick="regenPreviewClips()">↺ Regenerate clips from new window position</button>
+        <!-- Simple timeline scrubber -->
+        <div style="display:flex;flex-direction:column;gap:0.25rem">
+          <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:0.6rem;color:var(--muted)">
+            <span id="wfTimeLeft">0:00</span>
+            <span style="color:var(--green)" id="wfWindowLabel"></span>
+            <span id="wfTimeRight">0:00</span>
+          </div>
+          <!-- Track bar -->
+          <div id="scrubTrack" style="
+            position:relative;height:20px;background:var(--surface2);
+            border:1px solid var(--border);border-radius:4px;
+            cursor:pointer;user-select:none" onclick="scrubClick(event)">
+            <!-- Window highlight -->
+            <div id="scrubWindow" style="
+              position:absolute;top:0;height:100%;
+              background:rgba(29,185,84,0.25);border:1px solid var(--green);
+              border-radius:3px;pointer-events:none"></div>
+            <!-- Drag handle -->
+            <div id="scrubHandle" style="
+              position:absolute;top:0;height:100%;width:10px;
+              background:var(--green);border-radius:0 3px 3px 0;
+              cursor:ew-resize;opacity:0.8;transform:translateX(-5px)"></div>
+          </div>
+          <p style="font-family:var(--mono);font-size:0.6rem;color:var(--muted);margin:0">
+            Click or drag to reposition the 30-second preview window, then regenerate
+          </p>
+        </div>
+
+        <!-- Variant cards -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem" id="variantCards"></div>
+
+        <button class="btn" id="previewRegenBtn" style="display:none;font-size:0.75rem;padding:0.4rem"
+          onclick="regenPreviewClips()">↺ Regenerate clips from new window position</button>
+      </div>
     </div>
   </div>
 
@@ -1628,11 +1650,17 @@ function resetAllTabs() {
   document.getElementById('analyseReport').innerHTML = '';
   document.getElementById('analyseStatus').classList.remove('visible');
   document.getElementById('applyAnalysisBtn').style.display = 'none';
-  document.getElementById('previewSection').style.display = 'none';
-  document.getElementById('variantCards').innerHTML = '';
+  document.getElementById('previewSection').style.display   = 'none';
+  document.getElementById('waveformArea').style.display      = 'none';
+  document.getElementById('variantCards').innerHTML          = '';
+  const gb = document.getElementById('previewGenerateBtn');
+  if (gb) { gb.disabled = false; gb.textContent = '🎧 Generate preview clips'; gb.style.display = 'flex'; }
+  document.getElementById('previewStatus').textContent       = '';
+  if (document.getElementById('previewRegenBtn'))
+    document.getElementById('previewRegenBtn').style.display = 'none';
   window._lastAnalysis = null;
   analyseFileObj = null;
-  _previewData = null; _waveformData = null;
+  _previewData = null;
   _previewAudios = {}; _previewPlaying = null; _previewSelected = null;
 
   // ── Master (streaming + local) ────────────────────────────────────────────
@@ -2095,12 +2123,14 @@ function renderReport(d) {
   window._lastAnalysis = rec;
 
   report.innerHTML = html;
-  // Show the "Apply analysis" button on Master tab whenever we have results
   document.getElementById('applyAnalysisBtn').style.display =
     (window._lastAnalysis) ? 'flex' : 'none';
 
-  // Start generating preview clips in the background
-  startPreviewGeneration(rec, analyseFileObj);
+  // Show preview section with generate button — user triggers generation manually
+  document.getElementById('previewSection').style.display = 'flex';
+  document.getElementById('previewGenerateBtn').style.display = 'flex';
+  document.getElementById('waveformArea').style.display = 'none';
+  document.getElementById('previewStatus').textContent = '';
 }
 
 function applyRecommendations() {
@@ -3874,16 +3904,14 @@ document.getElementById('repairReset').addEventListener('click', () => {
 // ══════════════════════════════════════════════════════════
 //  PREVIEW SYSTEM
 // ══════════════════════════════════════════════════════════
-let _previewData     = null;   // result from /preview
-let _previewAudios   = {};     // {key: HTMLAudioElement}
-let _previewPlaying  = null;   // currently playing key
-let _previewSelected = null;   // selected variant key
-let _waveformData    = null;
-let _trackDuration   = 0;
-let _windowStart     = 0;
-let _windowDur       = 30;
-let _isDragging      = false;
-let _previewCacheBust = Date.now(); // incremented on each new generation
+let _previewData      = null;
+let _previewAudios    = {};
+let _previewPlaying   = null;
+let _previewSelected  = null;
+let _trackDuration    = 0;
+let _windowStart      = 0;
+let _windowDur        = 30;
+let _previewCacheBust = Date.now();
 
 const VARIANT_META = {
   raw:       { icon: '◉', colour: '#888' },
@@ -3892,73 +3920,53 @@ const VARIANT_META = {
   character: { icon: '✿', colour: '#CC88FF' },
 };
 
-// ── Waveform rendering ────────────────────────────────────
-function drawWaveform(data, trackDur, windowStart, windowDur) {
-  const canvas = document.getElementById('waveformCanvas');
-  if (!canvas || !data) return;
-  const ctx    = canvas.getContext('2d');
-  const W      = canvas.offsetWidth; const H = 64;
-  canvas.width = W; canvas.height = H;
+// ── Timeline scrubber — simple bar with draggable window ─────────────────────
+function drawScrubber(trackDur, windowStart, windowDur) {
+  if (!trackDur) return;
+  const startPct  = (windowStart / trackDur) * 100;
+  const widthPct  = (Math.min(windowDur, trackDur - windowStart) / trackDur) * 100;
+  const handlePct = startPct + widthPct;
 
-  ctx.clearRect(0,0,W,H);
-  const pts  = data;
-  const barW = W / pts.length;
+  const win    = document.getElementById('scrubWindow');
+  const handle = document.getElementById('scrubHandle');
+  if (win)    { win.style.left = startPct + '%'; win.style.width = widthPct + '%'; }
+  if (handle) { handle.style.left = handlePct + '%'; }
 
-  pts.forEach((v, i) => {
-    const x  = i * barW;
-    const bh = Math.max(1, v * (H - 4));
-    const y  = (H - bh) / 2;
-    ctx.fillStyle = 'rgba(29,185,84,0.45)';
-    ctx.fillRect(x, y, Math.max(1, barW - 0.5), bh);
-  });
-
-  // Window highlight
-  const winEl    = document.getElementById('waveformWindow');
-  const handleEl = document.getElementById('waveformDragHandle');
-  if (trackDur > 0) {
-    const startPct = windowStart / trackDur;
-    const widthPct = Math.min(windowDur, trackDur - windowStart) / trackDur;
-    winEl.style.left    = (startPct * 100) + '%';
-    winEl.style.width   = (widthPct * 100) + '%';
-    winEl.style.display = 'block';
-    handleEl.style.left    = ((startPct + widthPct) * 100) + '%';
-    handleEl.style.display = 'block';
-  }
-
-  // Time labels
-  const fmt = s => { const m=Math.floor(s/60); return `${m}:${String(Math.floor(s%60)).padStart(2,'0')}`; };
-  document.getElementById('wfTimeLeft').textContent  = '0:00';
-  document.getElementById('wfTimeRight').textContent = fmt(trackDur);
-  document.getElementById('wfWindowLabel').textContent =
-    `▶ ${fmt(windowStart)} – ${fmt(Math.min(windowStart+windowDur, trackDur))}`;
+  const fmt = s => { const m = Math.floor(s/60); return `${m}:${String(Math.floor(s%60)).padStart(2,'0')}`; };
+  const tl  = document.getElementById('wfTimeLeft');
+  const tr  = document.getElementById('wfTimeRight');
+  const wl  = document.getElementById('wfWindowLabel');
+  if (tl) tl.textContent = '0:00';
+  if (tr) tr.textContent = fmt(trackDur);
+  if (wl) wl.textContent = `▶ ${fmt(windowStart)} – ${fmt(Math.min(windowStart + windowDur, trackDur))}`;
 }
 
-// ── Waveform scrubber interaction ─────────────────────────
-function initWaveformScrubber() {
-  const container = document.getElementById('waveformContainer');
-  if (!container) return;
+function scrubClick(e) {
+  if (!_trackDuration) return;
+  const rect   = e.currentTarget.getBoundingClientRect();
+  const pct    = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const maxStart = Math.max(0, _trackDuration - _windowDur);
+  _windowStart = Math.min(pct * _trackDuration, maxStart);
+  drawScrubber(_trackDuration, _windowStart, _windowDur);
+  document.getElementById('previewRegenBtn').style.display = 'flex';
+}
 
-  function posFromEvent(e) {
-    const rect  = container.getBoundingClientRect();
-    const x     = (e.clientX || e.touches?.[0]?.clientX || 0) - rect.left;
-    const pct   = Math.max(0, Math.min(1, x / rect.width));
+function initScrubberDrag() {
+  const handle = document.getElementById('scrubHandle');
+  const track  = document.getElementById('scrubTrack');
+  if (!handle || !track) return;
+  let dragging = false;
+  handle.addEventListener('mousedown', e => { dragging = true; e.preventDefault(); });
+  document.addEventListener('mousemove', e => {
+    if (!dragging || !_trackDuration) return;
+    const rect     = track.getBoundingClientRect();
+    const pct      = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const maxStart = Math.max(0, _trackDuration - _windowDur);
-    return Math.min(pct * _trackDuration, maxStart);
-  }
-
-  container.addEventListener('mousedown', e => {
-    if (!_waveformData) return;
-    _isDragging = true;
-    _windowStart = posFromEvent(e);
-    drawWaveform(_waveformData, _trackDuration, _windowStart, _windowDur);
+    _windowStart   = Math.min(pct * _trackDuration, maxStart);
+    drawScrubber(_trackDuration, _windowStart, _windowDur);
     document.getElementById('previewRegenBtn').style.display = 'flex';
   });
-  document.addEventListener('mousemove', e => {
-    if (!_isDragging) return;
-    _windowStart = posFromEvent(e);
-    drawWaveform(_waveformData, _trackDuration, _windowStart, _windowDur);
-  });
-  document.addEventListener('mouseup', () => { _isDragging = false; });
+  document.addEventListener('mouseup', () => { dragging = false; });
 }
 
 // ── Variant card builder ──────────────────────────────────
@@ -4206,6 +4214,111 @@ async function regenPreviewClips() {
 }
 
 // ── Trigger preview generation after analysis ────────────
+async function runPreviewGeneration() {
+  if (!analyseFileObj || !window._lastAnalysis) return;
+  const rec = window._lastAnalysis?.recommended || window._lastAnalysis || {};
+
+  // Disable button, show status
+  const genBtn = document.getElementById('previewGenerateBtn');
+  genBtn.disabled    = true;
+  genBtn.textContent = '⏳ Generating… (60–90 seconds)';
+  document.getElementById('previewStatus').textContent = 'Processing four variants…';
+
+  // Reset audio state
+  if (_previewPlaying && _previewAudios[_previewPlaying]) {
+    _previewAudios[_previewPlaying].pause();
+  }
+  _previewAudios    = {};
+  _previewPlaying   = null;
+  _previewSelected  = null;
+  _previewCacheBust = Date.now();
+  _previewData      = {variants: {}};
+
+  const form = new FormData();
+  form.append('file',        analyseFileObj);
+  form.append('recommended', JSON.stringify(rec));
+
+  try {
+    // Step 1: generate full variants via SSE
+    const res = await fetch(`${SERVER}/preview`, {method:'POST', body:form});
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let   buffer  = '';
+    let   windowStart = null;
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const evt = JSON.parse(line.slice(6));
+          if (evt.type === 'meta') {
+            _trackDuration = evt.track_duration;
+            _windowStart   = evt.window_start;
+            _windowDur     = evt.clip_duration;
+            windowStart    = evt.window_start;
+          } else if (evt.type === 'variant') {
+            _previewData.variants[evt.key] = evt;
+            const count = Object.keys(_previewData.variants).length;
+            document.getElementById('previewStatus').textContent =
+              `${count} of 4 variants processed…`;
+          }
+        } catch(_) {}
+      }
+    }
+
+    // Step 2: call regen to get clean closed files — this is what actually works
+    document.getElementById('previewStatus').textContent = 'Finalising clips…';
+    const regenForm = new FormData();
+    regenForm.append('start_s',     String(_windowStart || 0));
+    regenForm.append('recommended', JSON.stringify(rec));
+    const rr = await fetch(`${SERVER}/preview_regen`, {method:'POST', body:regenForm});
+    const rd = await rr.json();
+    if (rd.error) throw new Error(rd.error);
+
+    _previewData      = rd;
+    _previewCacheBust = Date.now();
+    _previewAudios    = {};
+
+    // Step 3: show waveform and cards
+    document.getElementById('waveformArea').style.display = 'flex';
+    genBtn.style.display = 'none';
+    drawScrubber(_trackDuration, _windowStart, _windowDur);
+
+    // Build variant cards with play buttons enabled
+    const container = document.getElementById('variantCards');
+    const ORDER = ['raw','optimised','vocal','character'];
+    container.innerHTML = ORDER.map(key => {
+      const v    = rd.variants?.[key] || {};
+      const meta = VARIANT_META[key] || {icon:'▶', colour:'#888'};
+      return `<div class="variant-card" id="variantCard_${key}">
+        <div class="variant-card-title" style="color:${meta.colour}">${meta.icon} ${v.label || key}</div>
+        <div class="variant-card-desc">${v.description || ''}</div>
+        <div class="variant-controls">
+          <button class="variant-play" id="variantPlay_${key}"
+            onclick="toggleVariantPlay('${key}')">▶</button>
+          <div class="variant-progress"><div class="variant-progress-fill" id="variantProg_${key}"></div></div>
+          <button class="variant-use" onclick="applyVariantSettings('${key}')">Use these settings</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    document.getElementById('previewRegenBtn').style.display = 'flex';
+    document.getElementById('previewStatus').textContent = '✓ Ready — click ▶ to compare';
+
+  } catch(e) {
+    document.getElementById('previewStatus').textContent = `✗ ${e.message}`;
+    genBtn.disabled    = false;
+    genBtn.textContent = '🎧 Generate preview clips';
+  }
+}
+
 async function startPreviewGeneration(analysisResult, fileObj) {
   if (!fileObj) return;
   const rec = analysisResult?.recommended || {};
@@ -4274,11 +4387,11 @@ async function startPreviewGeneration(analysisResult, fileObj) {
           const evt = JSON.parse(line.slice(6));
 
           if (evt.type === 'meta') {
-            _waveformData  = evt.waveform;
             _trackDuration = evt.track_duration;
             _windowStart   = evt.window_start;
             _windowDur     = evt.clip_duration;
-            drawWaveform(_waveformData, _trackDuration, _windowStart, _windowDur);
+            drawScrubber(_trackDuration, _windowStart, _windowDur);
+            drawScrubber(_trackDuration, _windowStart, _windowDur);
 
           } else if (evt.type === 'variant') {
             _previewData.variants[evt.key] = evt;
@@ -4307,39 +4420,52 @@ async function startPreviewGeneration(analysisResult, fileObj) {
             if (loadEl) { loadEl.textContent = `✗ ${evt.message}`; loadEl.style.color='var(--error)'; }
 
           } else if (evt.type === 'done') {
-            // All variants written — wait 500ms for filesystem flush then
-            // pre-load all four audio elements so first click is instant
-            setTimeout(() => {
-              const ORDER = ['raw','optimised','vocal','character'];
-              ORDER.forEach(k => {
-                const v = _previewData?.variants?.[k];
-                if (!v || _previewAudios[k]) return;
-                const audio = new Audio(
-                  `${SERVER}/preview_clip?file=${encodeURIComponent(v.file)}&t=${_previewCacheBust}`
-                );
-                audio.preload = 'auto';
-                audio.addEventListener('timeupdate', () => {
-                  const pct = audio.duration > 0 ? (audio.currentTime/audio.duration*100) : 0;
-                  const el  = document.getElementById(`variantProg_${k}`);
-                  if (el) el.style.width = pct + '%';
+            // Generation complete — immediately re-fetch clips via regen endpoint
+            // This guarantees all file handles are closed before playback
+            document.getElementById('previewStatus').textContent = 'Finalising clips…';
+            const regenForm = new FormData();
+            regenForm.append('start_s', String(_windowStart));
+            const rec2 = analysisResult?.recommended || {};
+            regenForm.append('recommended', JSON.stringify(rec2));
+            try {
+              const rr = await fetch(`${SERVER}/preview_regen`, {method:'POST', body:regenForm});
+              const rd = await rr.json();
+              if (!rd.error) {
+                _previewData    = rd;
+                _previewCacheBust = Date.now();
+                _previewAudios  = {};
+                // Pre-load all four audio elements
+                const ORDER2 = ['raw','optimised','vocal','character'];
+                ORDER2.forEach(k => {
+                  const v = rd.variants?.[k];
+                  if (!v) return;
+                  const audio = new Audio(
+                    `${SERVER}/preview_clip?file=${encodeURIComponent(v.file)}&t=${_previewCacheBust}`
+                  );
+                  audio.preload = 'auto';
+                  audio.addEventListener('timeupdate', () => {
+                    const pct = audio.duration > 0 ? (audio.currentTime/audio.duration*100) : 0;
+                    const el  = document.getElementById(`variantProg_${k}`);
+                    if (el) el.style.width = pct + '%';
+                  });
+                  audio.addEventListener('ended', () => {
+                    const b = document.getElementById(`variantPlay_${k}`);
+                    if (b) b.textContent = '▶';
+                    const el = document.getElementById(`variantProg_${k}`);
+                    if (el) el.style.width = '0%';
+                    if (_previewPlaying === k) _previewPlaying = null;
+                  });
+                  _previewAudios[k] = audio;
                 });
-                audio.addEventListener('ended', () => {
-                  const b = document.getElementById(`variantPlay_${k}`);
-                  if (b) b.textContent = '▶';
-                  const el = document.getElementById(`variantProg_${k}`);
-                  if (el) el.style.width = '0%';
-                  if (_previewPlaying === k) _previewPlaying = null;
-                });
-                _previewAudios[k] = audio;
-              });
-              // Enable all play buttons after pre-load
-              document.querySelectorAll('.variant-play').forEach(btn => {
-                btn.disabled = false;
-                btn.classList.remove('pending');
-              });
-              document.getElementById('previewStatus').textContent = '✓ All clips ready — click ▶ to compare';
-              document.getElementById('previewRegenBtn').style.display = 'flex';
-            }, 500);
+              }
+            } catch(_) {}
+            // Enable play buttons regardless
+            document.querySelectorAll('.variant-play').forEach(btn => {
+              btn.disabled = false;
+              btn.classList.remove('pending');
+            });
+            document.getElementById('previewStatus').textContent = '✓ All clips ready — click ▶ to compare';
+            document.getElementById('previewRegenBtn').style.display = 'flex';
           }
         } catch(_) {}
       }
@@ -4351,7 +4477,7 @@ async function startPreviewGeneration(analysisResult, fileObj) {
 
 // Initialise scrubber, panel info states, and workspace on load
 document.addEventListener('DOMContentLoaded', () => {
-  initWaveformScrubber();
+  initScrubberDrag();
   initPanelInfoStates();
   initWorkspace();
 });

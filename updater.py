@@ -28,7 +28,7 @@ from pathlib import Path
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-CURRENT_VERSION  = "2.1.0"
+CURRENT_VERSION  = "2.2"
 GITHUB_REPO      = "IVibeStuff/StreamMaster"
 API_URL          = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 CACHE_FILE       = Path(__file__).parent / ".update_cache.json"
@@ -206,94 +206,110 @@ def download_and_stage(asset_url: str, asset_name: str) -> Path:
 
 def write_restart_script(stage_dir: Path) -> Path:
     """
-    Write a Windows .bat script that swaps files and relaunches StreamMaster.
-    All paths normalised to Windows backslashes.
+    Write a Python restart script instead of a bat file.
+    Python is guaranteed to be available and handles paths correctly
+    on all Windows configurations without shell escaping issues.
     """
-    extracted  = stage_dir / 'extracted'
-    bat_path   = stage_dir / 'restart.bat'
+    extracted = stage_dir / 'extracted'
+    script_path = stage_dir / 'restart.py'
 
-    # Normalise all paths to Windows backslashes
-    inst    = str(INSTALL_DIR).replace('/', '\\')
-    extr    = str(extracted).replace('/', '\\')
-    stg     = str(stage_dir).replace('/', '\\')
-    cache   = str(CACHE_FILE).replace('/', '\\')
-    hist    = inst + '\\history.json'
-    hist_tmp= stg  + '\\history_backup.json'
-    vbs     = inst + '\\Launch_Silent.vbs'
-    bat_win = inst + '\\Launch.bat'
+    script = f"""
+import os, sys, time, shutil, subprocess
+from pathlib import Path
 
-    script = f"""@echo off
-chcp 65001 >nul
-title StreamMaster Update
-echo.
-echo ================================================
-echo   StreamMaster Auto-Update
-echo ================================================
-echo.
-echo  Install dir: {inst}
-echo  Stage dir:   {stg}
-echo.
+INSTALL_DIR = Path(r"{INSTALL_DIR}")
+STAGE_DIR   = Path(r"{stage_dir}")
+EXTRACTED   = Path(r"{extracted}")
+CACHE_FILE  = Path(r"{CACHE_FILE}")
 
-echo  Waiting for server to exit...
-timeout /t 5 /nobreak >nul
+print("=" * 50)
+print("  StreamMaster Auto-Update")
+print("=" * 50)
+print(f"  Install: {{INSTALL_DIR}}")
+print(f"  Stage:   {{STAGE_DIR}}")
+print()
 
-echo  Backing up history...
-if exist "{hist}" (
-    copy /Y "{hist}" "{hist_tmp}" >nul
-    echo  History backed up.
-) else (
-    echo  No history file found.
-)
+# Wait for server to exit
+print("  Waiting for server to exit...")
+time.sleep(5)
 
-echo.
-echo  Locating update files...
-set "SRC={extr}"
-for /D %%d in ("{extr}\\*") do (
-    if exist "%%d\\server.py" set "SRC=%%d"
-)
-echo  Source: %SRC%
+# Backup history
+hist_src = INSTALL_DIR / "history.json"
+hist_bak = STAGE_DIR / "history_backup.json"
+if hist_src.exists():
+    shutil.copy2(str(hist_src), str(hist_bak))
+    print("  History backed up.")
 
-if not exist "%SRC%\\server.py" (
-    echo  ERROR: server.py not found in source directory.
-    echo  Contents of extracted:
-    dir "{extr}"
-    pause
-    exit /b 1
-)
+# Find source directory (may be flat or have one subfolder)
+src = EXTRACTED
+for item in EXTRACTED.iterdir():
+    if item.is_dir() and (item / "server.py").exists():
+        src = item
+        break
 
-echo.
-echo  Copying update files...
-xcopy /E /Y /I "%SRC%\\*" "{inst}\\"
-if %ERRORLEVEL% neq 0 (
-    echo  ERROR: xcopy failed with code %ERRORLEVEL%
-    pause
-    exit /b 1
-)
-echo  Files copied OK.
+print(f"  Source: {{src}}")
 
-echo  Restoring history...
-if exist "{hist_tmp}" copy /Y "{hist_tmp}" "{hist}" >nul
+if not (src / "server.py").exists():
+    print(f"  ERROR: server.py not found in {{src}}")
+    print("  Contents of extracted:")
+    for f in EXTRACTED.rglob("*"):
+        print(f"    {{f}}")
+    input("  Press Enter to exit...")
+    sys.exit(1)
 
-echo  Clearing update cache...
-if exist "{cache}" del /Q "{cache}"
+# Copy files
+print("  Copying files...")
+try:
+    for item in src.iterdir():
+        dst = INSTALL_DIR / item.name
+        if item.is_file():
+            shutil.copy2(str(item), str(dst))
+        elif item.is_dir():
+            if dst.exists():
+                shutil.rmtree(str(dst))
+            shutil.copytree(str(item), str(dst))
+    print(f"  Files copied OK.")
+except Exception as e:
+    print(f"  ERROR copying files: {{e}}")
+    input("  Press Enter to exit...")
+    sys.exit(1)
 
-echo.
-echo  Relaunching StreamMaster...
-if exist "{vbs}" (
-    echo  Using Launch_Silent.vbs
-    start "" wscript.exe "{vbs}"
-) else (
-    echo  Using Launch.bat
-    start "" "{bat_win}"
-)
+# Restore history
+if hist_bak.exists():
+    shutil.copy2(str(hist_bak), str(hist_src))
+    print("  History restored.")
 
-echo.
-echo  Done. This window will close in 8 seconds.
-timeout /t 8 /nobreak >nul
-rd /S /Q "{stg}" >nul 2>&1
+# Clear update cache
+if CACHE_FILE.exists():
+    CACHE_FILE.unlink()
+    print("  Cache cleared.")
+
+# Relaunch
+print()
+print("  Relaunching StreamMaster...")
+vbs = INSTALL_DIR / "Launch_Silent.vbs"
+bat = INSTALL_DIR / "Launch.bat"
+
+if vbs.exists():
+    print(f"  Using: {{vbs}}")
+    subprocess.Popen(["wscript.exe", str(vbs)])
+elif bat.exists():
+    print(f"  Using: {{bat}}")
+    subprocess.Popen([str(bat)], shell=True)
+else:
+    print("  WARNING: No launcher found!")
+
+print()
+print("  Update complete. Cleaning up...")
+time.sleep(3)
+try:
+    shutil.rmtree(str(STAGE_DIR))
+except Exception:
+    pass
+print("  Done.")
 """
-    bat_path.write_text(script, encoding='utf-8')
-    return bat_path
+    script_path.write_text(script, encoding='utf-8')
+    return script_path
 
 
 def apply_update(asset_url: str, asset_name: str) -> dict:

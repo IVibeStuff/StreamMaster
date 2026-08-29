@@ -578,11 +578,12 @@ def apply_update_route():
     try:
         result = apply_update(state['asset_url'], state['asset_name'])
         def _restart():
-            import time, subprocess, os
+            import time, subprocess, os, sys
             time.sleep(1.5)
-            # Use 'start' to open bat in a new visible window that stays open
+            # Launch restart.py in a new visible console window
             subprocess.Popen(
-                ['cmd', '/c', 'start', 'cmd', '/k', result['bat_path']]
+                [sys.executable, result['bat_path']],
+                creationflags=0x00000010,  # CREATE_NEW_CONSOLE
             )
             os._exit(0)
         threading.Thread(target=_restart, daemon=True).start()
@@ -850,7 +851,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     print("\n┌─────────────────────────────────────────────┐")
-    print("│  StreamMaster v2.1.0  —  localhost:5051      │")
+    print("│  StreamMaster v2.2  —  localhost:5051      │")
     print("└─────────────────────────────────────────────┘")
     print("  Opening http://localhost:5051 in your browser…\n")
     check_for_updates_background()

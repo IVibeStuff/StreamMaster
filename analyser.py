@@ -278,14 +278,39 @@ def _analyse_dropouts(audio, sr):
 #  RECOMMENDATIONS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _detect_engine(spectrum, stereo):
+def _check_metadata_for_suno(input_path: str) -> tuple:
+    """
+    Check WAV metadata for Suno watermark before running spectral heuristics.
+    Suno embeds 'made with suno' in the comment field of every exported file.
+    Returns (is_suno: bool, reason: str)
+    """
+    try:
+        import soundfile as _sf
+        with _sf.SoundFile(input_path) as f:
+            # Check all available metadata fields
+            for field in ['comment', 'title', 'artist', 'album', 'software', 'description']:
+                val = getattr(f, field, None) or ''
+                if 'suno' in val.lower():
+                    return True, f"Suno watermark in metadata ({field}: {val[:60]})"
+    except Exception:
+        pass
+    return False, ''
+
+
+def _detect_engine(spectrum, stereo, metadata_suno=False, metadata_reason=''):
     """
     Heuristic engine detection based on spectral fingerprint.
-    Suno: hard cutoff at 16kHz (48kHz files) or 32kHz (96kHz files),
-    flat 8-16kHz haze, narrow stereo.
+    Metadata check takes priority — if 'made with suno' is in the file
+    comment, we know it's Suno without needing spectral evidence.
     """
     score = 0
     reasons = []
+
+    # Metadata is definitive — skip spectral scoring
+    if metadata_suno:
+        return dict(engine='Suno', confidence_score=10,
+                    reasons=[metadata_reason])
+
     if not spectrum['has_air_above_16k']:
         score += 2; reasons.append("hard spectral cutoff detected (Suno generation signature)")
     if spectrum['spectral_variance'] < 0.5:
@@ -577,7 +602,10 @@ def analyse(input_path: str) -> dict:
     sibilance  = _analyse_sibilance(audio, sr)
     transients = _analyse_transients(audio, sr)
     dropouts   = _analyse_dropouts(audio, sr)
-    engine     = _detect_engine(spectrum, stereo)
+    meta_suno, meta_reason = _check_metadata_for_suno(input_path)
+    engine     = _detect_engine(spectrum, stereo,
+                                metadata_suno=meta_suno,
+                                metadata_reason=meta_reason)
     settings   = _recommend(loudness, stereo, spectrum, sibilance,
                              transients, dropouts, engine)
 

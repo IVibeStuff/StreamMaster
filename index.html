@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StreamMaster v2.2</title>
+<title>StreamMaster v2.3.1</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -603,7 +603,7 @@
   <p class="header-eyebrow">StreamMaster</p>
   <h1>Ready for <span>Streaming</span></h1>
   <p class="header-sub">−14 LUFS · −1 dBTP · 44.1 kHz · 16-bit</p>
-  <button class="about-btn" onclick="toggleAbout()">v2.2 — about</button>
+  <button class="about-btn" onclick="toggleAbout()">v2.3.1 — about</button>
 </header>
 
 <div class="layout">
@@ -635,7 +635,7 @@
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:480px;width:100%;position:relative">
     <button onclick="toggleAbout()" style="position:absolute;top:0.8rem;right:0.8rem;background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;line-height:1">✕</button>
     <p style="font-family:var(--mono);font-size:0.65rem;color:var(--green);letter-spacing:0.15em;text-transform:uppercase;margin:0 0 0.4rem">StreamMaster</p>
-    <h2 style="font-size:1.6rem;font-weight:700;margin:0 0 0.2rem">Version 2.2</h2>
+    <h2 style="font-size:1.6rem;font-weight:700;margin:0 0 0.2rem">Version 2.3.1</h2>
     <p style="color:var(--muted);font-size:0.85rem;margin:0 0 1.2rem">AI Music Mastering Suite</p>
     <div style="border-top:1px solid var(--border);padding-top:1rem;display:grid;grid-template-columns:130px 1fr;gap:0.35rem 0.5rem;font-size:0.82rem">
       <span style="color:var(--text);font-weight:500">Streaming target</span><span style="color:var(--muted)">−14 LUFS · −1 dBTP · 44.1 kHz / 16-bit</span>
@@ -1661,7 +1661,7 @@ function resetAllTabs() {
   window._lastAnalysis = null;
   analyseFileObj = null;
   _previewData = null;
-  _previewAudios = {}; _previewPlaying = null; _previewSelected = null;
+  _clearPreviewAudios(); _previewSelected = null;
 
   // ── Master (streaming + local) ────────────────────────────────────────────
   ['masterDownloadRow','masterDownloadRowLocal',
@@ -3912,6 +3912,18 @@ let _trackDuration    = 0;
 let _windowStart      = 0;
 let _windowDur        = 30;
 let _previewCacheBust = Date.now();
+let _previewGenId     = 0;
+
+// Stop and release all preview audio elements, increment generation ID
+// so stale event listeners from previous songs self-disable
+function _clearPreviewAudios() {
+  Object.values(_previewAudios).forEach(a => {
+    if (a) { try { a.pause(); a.src = ''; } catch(_) {} }
+  });
+  _previewAudios  = {};
+  _previewPlaying = null;
+  _previewGenId++;
+}
 
 const VARIANT_META = {
   raw:       { icon: '◉', colour: '#888' },
@@ -4172,8 +4184,7 @@ async function regenPreviewClips() {
     if (data.error) throw new Error(data.error);
     _previewData      = data;
     // Clear existing audio objects and bump cache buster so browser fetches fresh clips
-    _previewAudios    = {};
-    _previewPlaying   = null;
+    _clearPreviewAudios();
     _previewCacheBust = Date.now();
     buildVariantCards(data.variants, data.variants);
     // Pre-load audio elements after a short delay to ensure files are ready
@@ -4182,16 +4193,19 @@ async function regenPreviewClips() {
       ORDER.forEach(k => {
         const v = data.variants?.[k];
         if (!v) return;
+        const myGenId = _previewGenId;
         const audio = new Audio(
           `${SERVER}/preview_clip?file=${encodeURIComponent(v.file)}&t=${_previewCacheBust}`
         );
         audio.preload = 'auto';
         audio.addEventListener('timeupdate', () => {
+          if (_previewGenId !== myGenId) return;
           const pct = audio.duration > 0 ? (audio.currentTime/audio.duration*100) : 0;
           const el  = document.getElementById(`variantProg_${k}`);
           if (el) el.style.width = pct + '%';
         });
         audio.addEventListener('ended', () => {
+          if (_previewGenId !== myGenId) return;
           const b = document.getElementById(`variantPlay_${k}`);
           if (b) b.textContent = '▶';
           const el = document.getElementById(`variantProg_${k}`);
@@ -4228,8 +4242,7 @@ async function runPreviewGeneration() {
   if (_previewPlaying && _previewAudios[_previewPlaying]) {
     _previewAudios[_previewPlaying].pause();
   }
-  _previewAudios    = {};
-  _previewPlaying   = null;
+  _clearPreviewAudios();
   _previewSelected  = null;
   _previewCacheBust = Date.now();
   _previewData      = {variants: {}};
@@ -4284,7 +4297,7 @@ async function runPreviewGeneration() {
 
     _previewData      = rd;
     _previewCacheBust = Date.now();
-    _previewAudios    = {};
+    _clearPreviewAudios();
 
     // Step 3: show waveform and cards
     document.getElementById('waveformArea').style.display = 'flex';
@@ -4327,8 +4340,7 @@ async function startPreviewGeneration(analysisResult, fileObj) {
   if (_previewPlaying && _previewAudios[_previewPlaying]) {
     _previewAudios[_previewPlaying].pause();
   }
-  _previewAudios    = {};
-  _previewPlaying   = null;
+  _clearPreviewAudios();
   _previewSelected  = null;
   _previewCacheBust = Date.now();
   _previewData      = {variants: {}};
@@ -4433,22 +4445,25 @@ async function startPreviewGeneration(analysisResult, fileObj) {
               if (!rd.error) {
                 _previewData    = rd;
                 _previewCacheBust = Date.now();
-                _previewAudios  = {};
+                _clearPreviewAudios();
                 // Pre-load all four audio elements
                 const ORDER2 = ['raw','optimised','vocal','character'];
                 ORDER2.forEach(k => {
                   const v = rd.variants?.[k];
                   if (!v) return;
+                  const myGenId = _previewGenId;
                   const audio = new Audio(
                     `${SERVER}/preview_clip?file=${encodeURIComponent(v.file)}&t=${_previewCacheBust}`
                   );
                   audio.preload = 'auto';
                   audio.addEventListener('timeupdate', () => {
+                    if (_previewGenId !== myGenId) return;
                     const pct = audio.duration > 0 ? (audio.currentTime/audio.duration*100) : 0;
                     const el  = document.getElementById(`variantProg_${k}`);
                     if (el) el.style.width = pct + '%';
                   });
                   audio.addEventListener('ended', () => {
+                    if (_previewGenId !== myGenId) return;
                     const b = document.getElementById(`variantPlay_${k}`);
                     if (b) b.textContent = '▶';
                     const el = document.getElementById(`variantProg_${k}`);

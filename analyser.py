@@ -132,6 +132,7 @@ def _analyse_stereo(audio, sr):
 
     return dict(mono=False, mid_pct=float(mid_pct),
                 worst_mid_pct=worst_mid_pct,
+                ms_ratio_db=float(20*np.log10(_rms(mid)/_rms(side+1e-12)+1e-12)),
                 sub_side_vs_mid_db=float(sub_ratio),
                 sibilance_lr_diff_db=lr_diff,
                 vocal_variance_db=vocal_variance)
@@ -189,6 +190,7 @@ def _analyse_spectrum(audio, sr):
         above16k_rms=above16_rms,
         has_air_above_16k=has_air_above_16k,
         spectral_variance=spectral_variance,
+        air_deficit_db=float(mid_rms - air_rms),
         mud_diff_db=float(mud_diff),
         harsh_diff_db=float(harsh_diff)
     )
@@ -287,7 +289,6 @@ def _check_metadata_for_suno(input_path: str) -> tuple:
     try:
         import soundfile as _sf
         with _sf.SoundFile(input_path) as f:
-            # Check all available metadata fields
             for field in ['comment', 'title', 'artist', 'album', 'software', 'description']:
                 val = getattr(f, field, None) or ''
                 if 'suno' in val.lower():
@@ -297,19 +298,48 @@ def _check_metadata_for_suno(input_path: str) -> tuple:
     return False, ''
 
 
+def _detect_suno_v6(spectrum, stereo) -> bool:
+    """
+    Detect Suno v6 by spectral fingerprint.
+    v6 is significantly darker than v5 — enormous air deficit,
+    very flat 8-16kHz region (low PSD variance), and already-narrow stereo.
+    All three conditions must be met to avoid false positives.
+
+    Thresholds calibrated against measured v5 and v6 files:
+    - air_deficit_db > 15  (v6: 17.2, v5: 7.5-17.2 with overlap)
+    - spectral_variance < 0.30  (v6: 0.257, v5: 1.0-2.0 typically)
+    - ms_ratio_db > 7.0  (v6: 8.1, separates from wide-bass v5 tracks)
+    """
+    air_deficit = spectrum.get('air_deficit_db', 0)
+    sv          = spectrum.get('spectral_variance', 1.0)
+    ms_ratio    = stereo.get('ms_ratio_db', 0)
+    return air_deficit > 15.0 and sv < 0.30 and ms_ratio > 7.0
+
+
 def _detect_engine(spectrum, stereo, metadata_suno=False, metadata_reason=''):
     """
     Heuristic engine detection based on spectral fingerprint.
     Metadata check takes priority — if 'made with suno' is in the file
     comment, we know it's Suno without needing spectral evidence.
+    v6 detection runs after Suno is confirmed.
     """
     score = 0
     reasons = []
 
-    # Metadata is definitive — skip spectral scoring
+    # Metadata is definitive for Suno identification
     if metadata_suno:
-        return dict(engine='Suno', confidence_score=10,
-                    reasons=[metadata_reason])
+        # Check if this is specifically v6
+        is_v6 = _detect_suno_v6(spectrum, stereo)
+        engine = 'Suno v6' if is_v6 else 'Suno'
+        if is_v6:
+            reasons = [metadata_reason,
+                       f"v6 spectral signature: extreme air deficit "
+                       f"({spectrum.get('air_deficit_db',0):.1f}dB), "
+                       f"very flat 8-16kHz (variance={spectrum.get('spectral_variance',0):.3f}), "
+                       f"narrow stereo (M/S={stereo.get('ms_ratio_db',0):.1f}dB)"]
+        else:
+            reasons = [metadata_reason]
+        return dict(engine=engine, confidence_score=10, reasons=reasons)
 
     if not spectrum['has_air_above_16k']:
         score += 2; reasons.append("hard spectral cutoff detected (Suno generation signature)")
@@ -331,11 +361,41 @@ def _recommend(loudness, stereo, spectrum, sibilance, transients,
     Goes beyond simple threshold rules to compute genuinely track-specific
     parameter values from continuous measurements. Each parameter is derived
     from the actual measured data rather than mapped from a fixed lookup table.
+
+    Suno v6 gets a dedicated minimal preset — its dark tonal character and
+    already-narrow stereo mean that the standard Suno processing (EQ shelf,
+    M/S widening, dehaze) hurts rather than helps.
     """
     recs     = []
     settings = {}
 
-    # ── Spectral tilt — determines EQ shelf and mud cut precisely ────────────
+    # ── Suno v6 preset ────────────────────────────────────────────────────────
+    # v6 has a fundamentally different character to v5:
+    #   - Much darker tonal balance (17+ dB air deficit vs 9-12 dB for v5)
+    #   - Already-narrow stereo (M/S ratio > 8 dB)
+    #   - Very flat 8-16kHz (spectral_variance < 0.30)
+    # The standard processing chain breaks the sound — EQ shelf over-brightens,
+    # M/S widening creates artificial side content, dehaze modulates genuine content.
+    # Minimal processing is the correct approach for v6.
+    if engine_info.get('engine') == 'Suno v6':
+        sib_crest = sibilance.get('headroom_db', 0)
+        return dict(
+            eq_shelf_db     = 0.0,    # v6 darkness is character, not a flaw
+            eq_mud_db       = 0.0,    # no mud excess measured
+            presence_gain   = 0.0,    # already narrow — widening creates artefacts
+            bass_side_mix   = 1.0,    # preserve original bass stereo
+            deess_threshold = 3 if sib_crest > 14 else -2,  # light only if needed
+            vocal_boost_db  = 0.0,
+            macro_target_db = 0.0,
+            sat_mix         = 0.08,   # very light saturation only
+            comp_threshold  = -18.0,
+            comp_ratio      = 1.5,    # minimal compression
+            transient_boost = 0.0,    # already punchy
+            dyneq_max_cut   = 2.0,
+            hishelf_threshold = -99.0,
+        )
+
+    # ── Standard processing path (v5 Suno and Other) ─────────────────────────
     # Measure energy slope from bass to air. A correctly balanced track has
     # roughly −3 dB/octave tilt from low to high.
     # We measure deviation from that ideal slope.
@@ -591,7 +651,16 @@ def _sanitise(obj):
     return obj
 
 
-def analyse(input_path: str) -> dict:
+def analyse(input_path: str, suno_version_override: str = 'auto') -> dict:
+    """
+    Full track analysis.
+
+    suno_version_override: 'auto' | 'v5' | 'v6' | 'other'
+      'auto'  — use metadata watermark + spectral fingerprint (default)
+      'v5'    — force Suno engine, run standard v5 processing chain
+      'v6'    — force Suno v6 engine, run minimal processing preset
+      'other' — force Other / Unknown (no AI-specific processing)
+    """
     audio, sr = sf.read(input_path, always_2d=True)
     audio     = audio.astype(np.float64)
     duration  = len(audio) / sr
@@ -603,11 +672,25 @@ def analyse(input_path: str) -> dict:
     transients = _analyse_transients(audio, sr)
     dropouts   = _analyse_dropouts(audio, sr)
     meta_suno, meta_reason = _check_metadata_for_suno(input_path)
-    engine     = _detect_engine(spectrum, stereo,
+
+    # Apply user override if specified
+    if suno_version_override == 'v6':
+        engine = dict(engine='Suno v6', confidence_score=10,
+                      reasons=['User selected Suno v6'])
+    elif suno_version_override == 'v5':
+        engine = dict(engine='Suno', confidence_score=10,
+                      reasons=['User selected Suno v5'])
+    elif suno_version_override == 'other':
+        engine = dict(engine='Other / Unknown', confidence_score=0,
+                      reasons=['User selected non-Suno source'])
+    else:
+        # Auto-detect
+        engine = _detect_engine(spectrum, stereo,
                                 metadata_suno=meta_suno,
                                 metadata_reason=meta_reason)
-    settings   = _recommend(loudness, stereo, spectrum, sibilance,
-                             transients, dropouts, engine)
+
+    settings = _recommend(loudness, stereo, spectrum, sibilance,
+                          transients, dropouts, engine)
 
     return _sanitise(dict(
         file        = str(Path(input_path).name),
@@ -622,6 +705,7 @@ def analyse(input_path: str) -> dict:
         dropouts    = dropouts,
         engine      = engine,
         recommended = settings,
+        suno_version_override = suno_version_override,
     ))
 
 

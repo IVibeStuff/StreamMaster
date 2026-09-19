@@ -225,9 +225,12 @@ def analyse_route():
     original_name = f.filename
     input_path = UPLOAD_DIR / "analyse_input.wav"
     f.save(str(input_path))
+
+    # User-specified Suno version override
+    suno_version = request.form.get("suno_version", "auto")  # 'auto'|'v5'|'v6'|'other'
+
     try:
-        result = analyse(str(input_path))
-        # Override the filename in the result with the original name
+        result = analyse(str(input_path), suno_version_override=suno_version)
         result['file'] = original_name
         return jsonify(result)
     except Exception as e:
@@ -851,7 +854,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     print("\n┌─────────────────────────────────────────────┐")
-    print("│  StreamMaster v2.3.1  —  localhost:5051      │")
+    print("│  StreamMaster v2.3.2.1  —  localhost:5051      │")
     print("└─────────────────────────────────────────────┘")
     print("  Opening http://localhost:5051 in your browser…\n")
     check_for_updates_background()
